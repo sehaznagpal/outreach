@@ -1,0 +1,1 @@
+{ "rewrites": [{ "source": "/((?!email/|fonts/|assets/).*)", "destination": "/index.html" }] }
