@@ -58,12 +58,14 @@ em.accent, .serif em { font-style: italic; }
 .nav-item:hover { color: var(--text); background: var(--surface-1); }
 .nav-item.active { color: var(--text); background: var(--surface-2); }
 .nav-item.active svg { color: var(--yellow); }
-.rail-foot { margin-top: auto; padding: 0 12px; min-height: 20px; }
+.rail-foot { margin-top: auto; padding: 0 4px 0 12px; min-height: 32px; display: flex; align-items: center; justify-content: space-between; }
+.brand-btn { background: transparent; border: 0; padding: 4px 0; color: var(--text); display: inline-flex; align-items: center; }
+.brand-btn:hover .brand-mark { filter: brightness(1.15); }
 .save-state { font-size: 12px; color: var(--text-3); }
 .collapsed .rail-label, .collapsed .brand-text, .collapsed .add-label, .collapsed .save-state { display: none; }
 .collapsed .rail-top { justify-content: center; padding: 0; }
+.collapsed .rail-foot { justify-content: center; padding: 0; }
 .collapsed .brand-mark { margin: 0; }
-.collapsed .rail-top .icon-btn { display: none; }
 .collapsed .nav-item { justify-content: center; padding: 10px; }
 .collapsed .add-btn { padding: 0; width: 40px; height: 40px; justify-content: center; margin: 0 auto; }
 
@@ -72,6 +74,8 @@ em.accent, .serif em { font-style: italic; }
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 28px; flex-wrap: wrap; }
 .page-title { font-family: var(--font-serif); font-size: 48px; line-height: 1.05; font-weight: 400; letter-spacing: -0.015em; }
 .page-sub { color: var(--text-2); margin-top: 6px; }
+@media (min-width: 821px) { .page-sub, .empty p { white-space: nowrap; } }
+@media (max-width: 820px) { .page-sub, .empty p, .banner, .help { text-wrap: balance; } }
 
 /* ---------- primitives ---------- */
 .card {
@@ -146,7 +150,7 @@ button.pill:hover { background: var(--surface-2); color: var(--text); }
 
 .empty { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; padding: 36px 8px; color: var(--text-2); }
 .empty.center { align-items: center; text-align: center; }
-.empty p { max-width: 380px; }
+
 
 /* ---------- tables ---------- */
 .tbl-wrap { overflow-x: auto; margin: 0 -8px; padding: 0 8px; }
@@ -210,7 +214,8 @@ button.pill:hover { background: var(--surface-2); color: var(--text); }
 .span-6 { grid-column: span 6; } .span-5 { grid-column: span 5; } .span-4 { grid-column: span 4; } .span-3 { grid-column: span 3; }
 .hero { min-height: 230px; display: flex; flex-direction: column; justify-content: flex-end; }
 .hero h1 { font-family: var(--font-serif); font-size: 72px; line-height: 1; font-weight: 400; letter-spacing: -0.02em; margin-bottom: 14px; }
-.hero p { font-size: 17px; color: var(--on-grad); }
+.hero .hero-line { font-size: 17px; color: var(--on-grad); }
+.hero .hero-status { font-size: 14px; color: var(--on-grad-2); margin-top: 8px; }
 .next-batch .when { font-family: var(--font-serif); font-size: 48px; line-height: 1; letter-spacing: -0.01em; }
 .kpi .num { font-family: var(--font-serif); font-size: 72px; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .kpi .sub { color: var(--text-3); font-size: 13px; margin-top: 8px; }
@@ -358,3 +363,16 @@ button.pill:hover { background: var(--surface-2); color: var(--text); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ---------- content tabs, links, quiet actions ---------- */
+.tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.tab { background: transparent; border: 0; padding: 10px 14px; color: var(--text-2); font-size: 14px; font-weight: 500; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color 150ms ease-out; }
+.tab:hover { color: var(--text); }
+.tab[aria-selected='true'] { color: var(--text); border-bottom-color: var(--yellow); }
+.link-btn { background: transparent; border: 0; padding: 0; color: var(--yellow-soft); font-size: 14px; text-decoration: underline; text-underline-offset: 3px; }
+.link-btn:hover { color: var(--yellow); }
+.link-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; background: var(--surface-2); border-radius: var(--radius-sm); font-size: 14px; }
+.link-row .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link-row .url { color: var(--text-3); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pin { color: var(--yellow); }
+.banner.stop { border-color: color-mix(in srgb, var(--ember) 50%, transparent); }

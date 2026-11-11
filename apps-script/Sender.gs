@@ -8,8 +8,10 @@ function runTrigger() {
   try {
     var S = settings_();
     if (S.paused) return;
+    detectReplies_();   // always before sending
+    CACHE_ = {};
     sendDue_(S);
-    checkInbox_(S);
+    checkBounces_();
   } finally {
     lock.releaseLock();
   }
@@ -99,15 +101,21 @@ function sendDue_(S) {
   var capHit = false;
 
   due.forEach(function (batch) {
-    var company = byId_('Companies', batch.company_id);
-    if (!company || company.status === 'paused' || company.status === 'done') {
-      if (!company) update_('Batches', batch.id, { status: 'cancelled' });
-      return;
-    }
+    var company = fresh_('Companies', batch.company_id);
+    if (!company) { update_('Batches', batch.id, { status: 'cancelled', reason: 'Company removed' }); return; }
+    if (company.status === 'paused' || company.status === 'done' || company.status === 'replied') return;
     var sent = 0, errors = 0, remaining = 0;
+    var sentNames = [], skippedNames = [], stopped = false;
 
     csv_(batch.contact_ids).forEach(function (id) {
-      var c = byId_('Contacts', id);
+      // re-read from the Sheet right before each email
+      company = fresh_('Companies', batch.company_id);
+      var c = fresh_('Contacts', id);
+      if (company && company.status === 'replied') {
+        stopped = true;
+        if (c) skippedNames.push(c.name);
+        return;
+      }
       var eligible = c && c.batch_id === batch.id && !c.replied_at &&
         (batch.type === 'first' ? c.status === 'scheduled' : (c.status === 'sent' || c.status === 'followed_up'));
       if (!eligible) return;
@@ -123,7 +131,7 @@ function sendDue_(S) {
         errors++;
         return;
       }
-      if (sendOne_(batch, c, company, S)) { sent++; okToday++; }
+      if (sendOne_(batch, c, company, S)) { sent++; okToday++; sentNames.push(c.name); }
       else {
         errors++;
         // send the contact back to Ready so it can be re-planned once fixed
@@ -131,6 +139,13 @@ function sendDue_(S) {
       }
     });
 
+    if (stopped) {
+      update_('Batches', batch.id, {
+        status: sent > 0 ? 'partial' : 'cancelled', sent_at: sent > 0 ? now : '',
+        reason: 'Company replied. Sent: ' + (sentNames.join(', ') || 'none') + '. Skipped: ' + (skippedNames.join(', ') || 'none') + '.'
+      });
+      return;
+    }
     if (S.test_mode || remaining > 0) return; // batch stays planned
     var status = sent === 0 && errors === 0 ? 'cancelled' : (errors > 0 ? 'partial' : 'sent');
     update_('Batches', batch.id, { status: status, sent_at: now });

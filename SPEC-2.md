@@ -86,7 +86,7 @@ Re-deploys: after `clasp push`, update the **existing** deployment (`clasp deplo
 All IDs are short random strings. All timestamps ISO strings in Asia/Kolkata.
 
 **Companies**
-`id, name, industry, domain, website, opening_title, opening_url, pitch_page_url, notes, copy_ids (comma list, 1–3), followup_copy_ids, batch_size (default 4), followup_after_days (blank = global), max_followups (blank = global), status (active | paused | done), created_at`
+`id, name, industry, domain, website, opening_title, opening_url, pitch_page_url, notes, copy_ids (comma list, 1–3), followup_copy_ids, batch_size (default 4), followup_after_days (blank = global), max_followups (blank = global), status (active | paused | done | replied), created_at, replied_at, replied_by`
 
 **Contacts**
 `id, company_id, name, first_name, role, email, linkedin_url, line_override, copy_override_id, status (draft | ready | scheduled | sent | followed_up | replied | bounced | stopped), assigned_line, assigned_copy_id, batch_id, thread_id, first_sent_at, last_sent_at, followups_sent, replied_at, created_at`
@@ -95,10 +95,16 @@ All IDs are short random strings. All timestamps ISO strings in Asia/Kolkata.
 `id, company_id, text`
 
 **Copies**
-`id, name, kind (first | followup), tags (comma list: text, links, opening, signature, image), subject, body_html, uses_vars (computed), image_url, include_signature (bool), archived (bool), updated_at`
+`id, name, kind (first | followup), tags (comma list: text, links, opening, signature, image), subject, body_html, uses_vars (computed), image_url, signature_id (blank = default, `none` = no signature), auto_link (bool), archived (bool), updated_at`
 
 **Batches**
-`id, company_id, type (first | followup), scheduled_at, status (planned | sending | sent | cancelled | partial), contact_ids (comma list), sent_at, created_at`
+`id, company_id, type (first | followup), scheduled_at, status (planned | sending | sent | cancelled | partial), contact_ids (comma list), sent_at, created_at, reason`
+
+**Links**
+`id, label, url, key, auto_words (comma list), is_primary (bool), scope (global | company | contact), company_id, contact_id, created_at`. Seeded with Portfolio (primary), CV and LinkedIn. Resolution order for a key: person > company > global.
+
+**Signatures**
+`id, name, html, image_url, is_default (bool), updated_at`
 
 **SendLog** (append-only history: one row per actual email sent)
 `id, contact_id, company_id, batch_id, type (first | followup_n), copy_id, line_used, subject, sent_at, thread_id, result (ok | error), error`
@@ -107,7 +113,7 @@ All IDs are short random strings. All timestamps ISO strings in Asia/Kolkata.
 `role` (one per row; seeded, user can add)
 
 **Settings** (key / value)
-`daily_cap (15), send_days (Mon–Fri), default_send_time (10:30), followup_after_days (4), max_followups (1), signature_html, sender_name, test_mode (true|false), test_email, paused (true|false), weekly_goal_companies (5)`
+`daily_cap (15), send_days (Mon–Fri), default_send_time (10:30), followup_after_days (4), max_followups (1), sender_name, test_mode (true|false), test_email, paused (true|false), weekly_goal_companies (5)`
 
 ### Seed roles
 Founder, Co-founder, CEO, CTO, CPO, Chief of Staff, Founder's Office, Head of Product, Product Manager, Associate Product Manager, Head of Design, Design Lead, Design Manager, Product Designer, UX Researcher, Engineering Manager, Hiring Manager, HR, HR Business Partner, Talent Acquisition, Recruiter, Other.
@@ -116,17 +122,17 @@ Founder, Co-founder, CEO, CTO, CPO, Chief of Staff, Founder's Office, Head of Pr
 
 ## 4. Screens
 
-Navigation: a slim left rail (icons + labels, like reference 4) with: **Dashboard, Companies, Logs, Copies, Calendar, Settings.** A global **+ Company** button sits at the top of the rail. Keyboard: `N` = new company, `/` = search companies.
+Navigation: a slim left rail (icons + labels, like reference 4; the orb logo and a button pinned at the bottom toggle collapsed / expanded, `[` is the shortcut, the state is remembered, collapsed items show tooltips) with: **Dashboard, Companies, Logs, Content, Calendar, Settings.** A global **+ Company** button sits at the top of the rail. Keyboard: `N` = new company, `/` = search companies.
 
 ### 4.1 Dashboard
 A bento grid (reference 1 layout logic). Everything here is read-only and clicks through.
 
-1. **Hero card (gradient):** greeting in Gambetta ("Good morning, Sehaz"), and one line of what's happening today: "2 batches go out today · 7 emails · next at 10:30". If nothing's scheduled: "Nothing scheduled. Pick a company and queue a batch."
+1. **Hero card (gradient):** a short motivational headline in Gambetta plus one supporting line in Bricolage, one pair per day rotating by date (list lives in `web/src/content/motivation.ts`), then a smaller status line: "2 batches go out today · 7 emails · next at 10:30". If nothing's scheduled: "Nothing scheduled. Pick a company and queue a batch."
 2. **Next batch:** company, time, countdown, the names in it. Click → that batch in Logs.
 3. **KPI tiles (4):** sent this week, replies this week (+ reply rate), companies active, emails queued for the next 7 days. Big numbers in Gambetta.
 4. **Weekly goal:** companies added this week vs goal (ring or bar), plus a streak: consecutive weekdays with at least one email sent.
 5. **Activity heatmap:** last 12 weeks, one cell per day (reference 3 "work activity" grid). Cell colour by volume; yellow = first emails, a second tone where follow-ups dominated; empty outlined cell = a weekday with nothing sent.
-6. **Recent replies:** the last 5 contacts who replied, with company and how many days after sending. Each links to the company page. This is the most motivating card; give it room.
+6. **Recent replies:** the last 5 companies that replied, with who replied and how many days after the first email ("Swiggy · reply from Priya, 3 days after first email"). Each links to the company page. This is the most motivating card; give it room.
 7. **Needs attention:** bounced emails, companies with ready contacts but no batch, batches over the daily cap, copies referencing a variable the company is missing.
 
 ### 4.2 Companies (list)
@@ -136,13 +142,14 @@ Grid or table toggle. Each company shows name, industry, counts (contacts / read
 Two-column layout.
 
 **Left / main:**
-- **Header:** company name (Gambetta, large), industry pill, domain, status switch (active / paused / done).
+- **Header:** company name (Gambetta, large), industry pill, domain, status switch (active / paused / done), plus **Mark as replied** (for replies that came through LinkedIn or a phone call). When status is `replied` the switch is replaced by a banner: "<Name> replied on <date>. Outreach to this company is stopped." with **Resume outreach** (asks for confirmation, sets the company back to `active` and `stopped` contacts back to `draft`; cancelled batches are not restored). Marking anyone ready at a replied company is blocked.
 - **People table:**
   - Columns: checkbox, Name, Role (dropdown from Roles, type-to-filter, "Add new role" at the bottom saves it to Roles), Email, LinkedIn, Line (shows the assigned one; click to override), Copy (assigned; click to override), Status pill, **Action**.
   - Action column: a **Ready** toggle for drafts. When toggled, the contact is placed in the next open batch for this company (see §5.1) and the cell shows "Batch · Thu 10:30". Already-sent rows show the sent date and follow-up state instead.
   - Adding people: an always-present empty row at the bottom of the table (type and press Enter for the next field, Tab moves across). Plus a **Paste list** button: paste lines like `Name, Role, email` or tab-separated from a spreadsheet; preview the parsed rows before adding.
   - Email helper: if the company has an email pattern set (e.g. `{first}@domain`, `{first}.{last}@domain`), typing a name auto-fills the email in a muted style the user can accept with Tab.
   - Bulk actions on selected rows: Mark ready, Change role, Remove.
+  - Row menu (⋯): **Add link for this person**. Person-level links apply only to that person's emails and win over company and global links.
   - Duplicate guard: warn if an email already exists anywhere in the database.
 - **Lines:** a list of 1–5 personalised lines for this company, add / edit / delete inline. Small note under it: "Each person gets one at random. Override per person in the table."
 - **Notes:** free text, autosaves.
@@ -150,8 +157,9 @@ Two-column layout.
 **Right / sidebar:**
 - **Copies for this company:** pick 1–3 first-email copies and 0–2 follow-up copies from the library (searchable select showing name + tags). Each contact gets one at random when they're marked ready. Show a warning if a chosen copy uses a variable this company hasn't filled (e.g. `{{opening}}` with no opening set).
 - **Company details used in copies:** opening title + URL, pitch page URL, email pattern.
+- **Links for this company:** "+ Add link" (label, URL, optional auto-link words). Available in that company's emails as `{{link:key}}` and through auto-link words, and they beat global links with the same key.
 - **Sending rules:** batch size (default 4), follow-up after X days (default from Settings), max follow-ups.
-- **Preview:** pick any contact → shows the exact rendered email (subject + body + signature/image) as it will send. Also a **Send test to me** button.
+- **Preview:** pick any contact → shows the exact rendered email (subject + body + signature/image) as it will send, and which links were resolved and from which level. Also a **Send test to me** button.
 - **Planned batches:** list of this company's upcoming batches with date/time (read-only here; edit in Logs).
 
 ### 4.4 Logs (batches)
@@ -160,22 +168,31 @@ Read-only overview of every batch, grouped by day: **Today, Tomorrow, This week,
 - Each batch card: company, type (first / follow-up), scheduled date + time, the contacts in it (name · role · copy name), status.
 - Editable here: **date and time** (inline picker), **Cancel batch**, **remove a person** from the batch (returns them to Ready). Nothing else.
 - **Plan batches** button: opens a panel listing every company with ready-but-unscheduled contacts. User picks companies, a start date, time, and spacing (every weekday / every 2 days), and the app creates as many batches as needed in one go. Shows a preview of the resulting schedule and any day that would exceed the daily cap before confirming.
+- Cancelled and partial batches show their reason (for example "Company replied. Sent: A. Skipped: B.").
 - Cap warning: a day whose total (first + follow-ups) exceeds `daily_cap` gets a visible warning; the app never silently moves sends.
 - Global **Pause all sending** switch at the top (mirrors Settings).
 
-### 4.5 Copies (central library)
-- List of copies, each with name, kind (first / follow-up), tags, last edited, and how many times it's been used + its reply rate (from SendLog).
-- Editor: name, kind, tags (text, links, opening, signature, image), subject, body, image URL, include signature toggle. Body is a simple rich-text editor (bold, italic, link, line breaks only; no fonts, no colours) that stores HTML.
-- Variables shown as clickable chips that insert into the body: `{{first_name}}`, `{{name}}`, `{{role}}`, `{{company}}`, `{{line}}`, `{{opening_title}}`, `{{opening_url}}`, `{{pitch_page_url}}`, `{{portfolio_url}}`, `{{sender_name}}`.
-- Live preview pane rendered with a sample contact.
-- Duplicate, archive (archived copies stay attached to past sends but can't be chosen for new companies).
-- **Signature** lives in Settings but is previewable here.
+### 4.5 Content (central library)
+Page title **Content**. Subtitle: "Everything that goes into your emails: bodies, links and signatures." Four tabs: **Emails · Follow-ups · Links · Signatures**. One primary button in the header whose label follows the tab (New email, New follow-up, New link, New signature). A list's empty state is one sentence plus a quiet text link; the editor pane's empty state is only a hint ("Select an email to edit it.").
+
+**Emails and Follow-ups** (the old Copies)
+- List with name, tags, last edited, uses and reply rate (from SendLog). Duplicate, archive (archived items stay attached to past sends but can't be chosen for new companies).
+- Editor: name, tags (text, links, opening, signature, image), subject, body (simple rich text: bold, italic, link, line breaks), image URL, **Signature** dropdown (Default / any named signature / None), **Auto-link words** toggle (on by default).
+- Variable chips insert `{{first_name}}`, `{{name}}`, `{{role}}`, `{{company}}`, `{{line}}`, `{{opening_title}}`, `{{opening_url}}`, `{{pitch_page_url}}`, `{{portfolio_url}}` (the Portfolio link's URL), `{{sender_name}}`. A **Links** chip row inserts `{{link:key}}`, which renders as the link's label, hyperlinked. Selecting text and choosing **Link to** in the toolbar hyperlinks that text instead.
+- Live preview shows the fully rendered result with links and signature applied. A referenced link with an empty URL shows a warning and blocks scheduling.
+
+**Links**
+- A library of named links: label, URL, key (auto-generated from the label, editable), auto-link words (comma list), primary (pinned at the top). Seeded with Portfolio (primary), CV and LinkedIn.
+- Auto-linking: when an email is rendered, the first occurrence of any of a link's auto-link words in the body becomes a hyperlink (case-insensitive, whole words only, never inside an existing link), if the email's Auto-link toggle is on.
+
+**Signatures**
+- Multiple named signatures, each with an HTML editor (it can use variables and `{{link:...}}`) and an optional image URL. One is marked default.
 
 ### 4.6 Calendar
 Month view. Each day shows dots/count for first emails sent, follow-ups sent, and planned (outlined) batches. Past weekdays with nothing sent are marked faintly. Click a day → side panel listing exactly what was sent or is scheduled that day, linking to batches and companies. Read-only.
 
 ### 4.7 Settings
-Daily cap, send days, default send time, default follow-up days and max follow-ups, sender name, signature (HTML editor with preview), portfolio URL, weekly goal, test mode + test email, pause all sending, API token field, "Run setup" helper, and a link to open the Google Sheet.
+Daily cap, send days, default send time, default follow-up days and max follow-ups, sender name, weekly goal, test mode + test email, pause all sending, API token field, "Run setup" helper, and a link to open the Google Sheet. Signature and portfolio live in Content. (On first load after the change, an old `signature_html` becomes the "Default" signature and an old `portfolio_url` fills the Portfolio link, then both keys are cleared.)
 
 ---
 
@@ -204,9 +221,13 @@ When a contact is marked ready:
 - Follow-up copy: random from the company's follow-up copies, else the default follow-up copy (first copy with kind = followup).
 - Cancelled automatically if the contact replied or bounced.
 
-### 5.4 Reply and bounce detection (same trigger, after sending)
-- For every contact with a `thread_id` in status sent / followed_up: if the thread has a message not from the user → `replied`, set `replied_at`, cancel pending follow-ups. Check only threads from the last 30 days to stay within quotas.
-- Search `from:mailer-daemon newer_than:2d`; match the failed address to a contact → `bounced`, cancel follow-ups.
+### 5.4 Replies stop the whole company (same trigger, always before sending)
+One reply from anyone stops all outreach to that company: every first email and follow-up, for every contact, in every batch.
+- **What counts:** a message in any outreach thread for that company from someone other than me; or any email from `@<company domain>` received after my first email to them (catches new threads and forwards; skipped for gmail.com, outlook.com, yahoo.com, hotmail.com, icloud.com, proton.me). Bounces (mailer-daemon) and automatic replies (an `Auto-Submitted` header other than "no", or a subject starting "Automatic reply", "Auto:", "Out of office" or "OOO") do not count.
+- **Then, in one locked operation:** the contact who replied → `replied` (a reply from someone unknown is recorded against the company with their email); company status → `replied`; every planned batch → `cancelled` (or `partial` if some were already sent) with reason "Company replied"; every other draft / ready / scheduled / sent / followed_up contact → `stopped` (send history is kept).
+- **Before each email:** the company and contact are re-read from the Sheet; the email is skipped if the company is `replied` or the contact is no longer `scheduled`. A batch cut short is marked `partial` with who was sent and who was skipped.
+- Detection, sending and every UI write share the same `LockService` lock.
+- **Bounces:** search `from:mailer-daemon newer_than:2d`; match the failed address to a contact → `bounced`, cancel follow-ups.
 
 ### 5.5 Rendering
 - Replace variables; if a required variable is empty, refuse to schedule (caught earlier on the company page) rather than sending a broken email.
@@ -221,13 +242,13 @@ Consumer Gmail via Apps Script allows about 100 recipients/day; the cap of 10–
 
 ## 6. API actions
 
-`bootstrap` (everything needed for Dashboard + lists in one call), `getCompany`, `saveCompany`, `deleteCompany`, `saveContacts` (bulk upsert), `setReady` (ids, bool), `removeContact`, `saveLines`, `listCopies`, `saveCopy`, `archiveCopy`, `previewEmail` (contact_id, copy_id?), `sendTest`, `listBatches` (range), `rescheduleBatch` (id, scheduled_at), `cancelBatch`, `removeFromBatch`, `planBatches` (company_ids, start, time, spacing, dry_run), `getCalendar` (month), `getSettings`, `saveSettings`, `addRole`.
+`bootstrap` (everything needed for Dashboard + lists in one call), `getCompany`, `saveCompany`, `deleteCompany`, `saveContacts` (bulk upsert), `setReady` (ids, bool), `removeContact`, `saveLines`, `listCopies`, `saveCopy`, `archiveCopy`, `previewEmail` (contact_id, copy_id?), `sendTest`, `listBatches` (range), `rescheduleBatch` (id, scheduled_at), `cancelBatch`, `removeFromBatch`, `planBatches` (company_ids, start, time, spacing, dry_run), `getCalendar` (month), `getSettings`, `saveSettings`, `addRole`, `listLinks`, `saveLink`, `deleteLink`, `listSignatures`, `saveSignature`, `deleteSignature`, `markCompanyReplied`, `resumeCompany`.
 
 ---
 
 ## 7. Design system (strict)
 
-**Mood:** dark only. Warm, quiet, editorial. Premium means restraint: a lot of space, few borders, large serif numbers, one luminous gradient used sparingly. It must not look like a generic AI/SaaS dashboard: no neon purple, no glassmorphism everywhere, no heavy drop shadows, no emoji icons, no gradient text on every heading.
+**Mood:** dark only. Neutral true near-blacks, quiet, editorial. Premium means restraint: a lot of space, few borders, large serif numbers, one luminous gradient used sparingly. It must not look like a generic AI/SaaS dashboard: no neon purple, no glassmorphism everywhere, no heavy drop shadows, no emoji icons, no gradient text on every heading.
 
 **References (in order of influence):**
 1. Bento of soft rounded cards with a blue→green→yellow blurred gradient orb and gradient panel (layout + gradient).
@@ -246,18 +267,18 @@ Placeholder palette derived from the references. **Sehaz will supply final colou
 
 ```css
 :root {
-  /* surfaces: warm near-blacks, not blue-black */
-  --bg:          #0C0B09;
-  --surface-1:   #141310;
-  --surface-2:   #1B1A16;
-  --surface-3:   #24221D;
-  --line:        rgba(246, 240, 222, 0.07);
-  --line-strong: rgba(246, 240, 222, 0.14);
+  /* surfaces: neutral near-blacks, no warm or brown tint */
+  --bg:          #060606;
+  --surface-1:   #0D0D0D;
+  --surface-2:   #131313;
+  --surface-3:   #1A1A1A;
+  --line:        rgba(255, 255, 255, 0.06);
+  --line-strong: rgba(255, 255, 255, 0.11);
 
   /* text: cream, not pure white */
-  --text:        #F3EEDF;
-  --text-2:      #B4AE9F;
-  --text-3:      #7A7569;
+  --text:        #F2F0EA;
+  --text-2:      #A3A3A0;
+  --text-3:      #6B6B68;
 
   /* accents */
   --yellow:      #F2E66B;
@@ -280,7 +301,7 @@ Placeholder palette derived from the references. **Sehaz will supply final colou
 ```
 
 ### Rules
-- **Gradients:** used only on (a) the Dashboard hero card, (b) the Next batch card, (c) a small blurred orb decoration, (d) the primary button on hover. Text on gradient cards is near-black (`#141310`), set in Gambetta. Everywhere else is flat warm surfaces.
+- **Gradients:** used only on (a) the Dashboard hero card, (b) the Next batch card, (c) a small blurred orb decoration, (d) the primary button on hover. Text on gradient cards is near-black (`#111111`), set in Gambetta. Everywhere else is flat warm surfaces.
 - **Grain:** a very faint SVG noise overlay (opacity 0.03–0.05) on the gradient cards and on `--bg`, so gradients don't band and the dark doesn't feel flat.
 - **Depth:** separation by surface tone + 1px `--line` borders, not shadows. If any shadow, it's one soft ambient (`0 30px 60px -30px rgba(0,0,0,.6)`) on modals only. A 1px top inner highlight (`inset 0 1px 0 rgba(255,255,255,.04)`) on cards is allowed.
 - **Shape:** cards `--radius-lg`, inputs and table rows `--radius-sm`, pills fully rounded and outlined (reference 2), selected pill filled with `--surface-3` or yellow at low opacity.

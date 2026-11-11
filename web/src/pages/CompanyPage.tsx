@@ -4,9 +4,10 @@ import { AlertTriangle, Plus, X } from 'lucide-react';
 import { call } from '../api';
 import { uid, useData, useStore } from '../store';
 import { csv, type Company, type CompanyStatus, type Data, type Rendered } from '../types';
-import { Combo, Empty, iconProps, SavedHint, Seg, useDebounced } from '../components/ui';
+import { Combo, CompanyStatusPill, Empty, iconProps, SavedHint, Seg, useDebounced } from '../components/ui';
+import { LinksEditor } from '../components/LinksEditor';
 import { PeopleTable } from '../components/PeopleTable';
-import { iframeDoc, missingForCompany } from '../lib/render';
+import { iframeDoc, missingForCompany, resolveLinks } from '../lib/render';
 import { dateOf, fmtDay, timeOf } from '../lib/dates';
 
 /** Text input that keeps its own draft and saves on blur. */
@@ -38,6 +39,17 @@ export function CompanyPage() {
   const saveCompany = (p: Partial<Company>) =>
     mutate('saveCompany', { company: { id: company.id, ...p } }, (x) => ({ ...x, companies: x.companies.map((c) => (c.id === company.id ? { ...c, ...p } : c)) }));
 
+  const markReplied = async () => {
+    const who = window.prompt('Who replied? Leave blank if you are not sure. Outreach to this company stops straight away.', '');
+    if (who === null) return;
+    const match = d.contacts.find((c) => c.company_id === company.id && c.name.toLowerCase() === who.trim().toLowerCase());
+    await mutate('markCompanyReplied', { company_id: company.id, contact_id: match?.id, who: who.trim() || undefined });
+  };
+  const resume = async () => {
+    if (!window.confirm('Resume outreach? The company goes back to active and stopped people become drafts. Cancelled batches are not restored, so mark people as ready again.')) return;
+    await mutate('resumeCompany', { company_id: company.id });
+  };
+
   const contacts = d.contacts.filter((c) => c.company_id === company.id).sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0));
   const lines = d.lines.filter((l) => l.company_id === company.id);
 
@@ -53,10 +65,22 @@ export function CompanyPage() {
           <input className="input bare" style={{ width: 200, height: 28 }} aria-label="Domain" placeholder="domain.com" defaultValue={company.domain}
             key={'d' + company.domain} onBlur={(e) => e.target.value.trim() !== company.domain && saveCompany({ domain: e.target.value.trim() })} />
           <span className="spacer" />
-          <Seg<CompanyStatus> label="Status" value={company.status} onChange={(v) => saveCompany({ status: v })}
-            options={[{ value: 'active', label: 'Active' }, { value: 'paused', label: 'Paused' }, { value: 'done', label: 'Done' }]} />
+          {company.status === 'replied' ? <CompanyStatusPill status="replied" /> : (
+            <>
+              <button className="btn sm ghost" onClick={markReplied}>Mark as replied</button>
+              <Seg<CompanyStatus> label="Status" value={company.status} onChange={(v) => saveCompany({ status: v })}
+                options={[{ value: 'active', label: 'Active' }, { value: 'paused', label: 'Paused' }, { value: 'done', label: 'Done' }]} />
+            </>
+          )}
         </div>
       </div>
+
+      {company.status === 'replied' && (
+        <div className="banner stop" role="status">
+          <span className="grow"><b style={{ fontWeight: 500 }}>{company.replied_by || 'Someone'}</b> replied on {company.replied_at ? fmtDay(dateOf(company.replied_at)) : 'an earlier date'}. Outreach to this company is stopped.</span>
+          <button className="btn sm" onClick={resume}>Resume outreach</button>
+        </div>
+      )}
 
       <div className="co-layout">
         <div>
@@ -133,6 +157,7 @@ function CopyPicker({ title, kind, max, company, d, field, saveCompany }: {
 }) {
   const chosen = csv(company[field]);
   const hasLines = d.lines.some((l) => l.company_id === company.id);
+  const links = resolveLinks(d, company.id);
   const options = d.copies.filter((c) => c.kind === kind && !c.archived && !chosen.includes(c.id)).map((c) => ({ value: c.id, label: c.name, hint: csv(c.tags).join(' · ') }));
   return (
     <div className="field" style={{ marginBottom: 18 }}>
@@ -141,7 +166,7 @@ function CopyPicker({ title, kind, max, company, d, field, saveCompany }: {
         {chosen.map((cid) => {
           const cp = d.copies.find((c) => c.id === cid);
           if (!cp) return null;
-          const miss = missingForCompany(cp, company, d.settings, hasLines);
+          const miss = missingForCompany(cp, company, d.settings, hasLines, links, d.signatures);
           return (
             <div key={cid}>
               <div className="chosen-item"><span className="trunc">{cp.name}</span>
@@ -196,7 +221,7 @@ function Sidebar({ company, d, saveCompany }: { company: Company; d: Data; saveC
   return (
     <aside className="card" style={{ padding: 28 }} aria-label="Company settings">
       <div className="side-block">
-        <h3>Copies for this company</h3>
+        <h3>Emails for this company</h3>
         <CopyPicker title="First emails" kind="first" max={3} company={company} d={d} field="copy_ids" saveCompany={saveCompany} />
         <CopyPicker title="Follow-ups" kind="followup" max={2} company={company} d={d} field="followup_copy_ids" saveCompany={saveCompany} />
       </div>
@@ -210,6 +235,12 @@ function Sidebar({ company, d, saveCompany }: { company: Company; d: Data; saveC
           <Field id="f-ep" label="Email pattern" value={company.email_pattern} onSave={(v) => saveCompany({ email_pattern: v })} placeholder="{first}.{last}@domain" />
           <span className="help" style={{ marginTop: -8 }}>Fills emails as you type names. Tokens: {'{first}'} {'{last}'} {'{f}'} {'{l}'}.</span>
         </div>
+      </div>
+
+      <div className="side-block">
+        <h3>Links for this company</h3>
+        <LinksEditor scope="company" companyId={company.id} />
+        <p className="help" style={{ marginTop: 8 }}>Use them as {'{{link:key}}'} in this company's emails, or through auto-link words.</p>
       </div>
 
       <div className="side-block">
@@ -232,6 +263,9 @@ function Sidebar({ company, d, saveCompany }: { company: Company; d: Data; saveC
                 <div className="small muted">To {prev.to || '—'}<br />Subject: <b style={{ fontWeight: 500, color: 'var(--text)' }}>{prev.subject}</b></div>
                 {prev.missing.length > 0 && <div className="warn"><AlertTriangle {...iconProps} />Missing {prev.missing.map((m) => `{{${m}}}`).join(', ')}. This will not send until filled.</div>}
                 <iframe title="Email preview" className="email-frame" sandbox="" srcDoc={iframeDoc(prev.html)} />
+                {prev.links_used && prev.links_used.length > 0 && (
+                  <div className="help">Links used: {prev.links_used.map((l) => `${l.label} (${l.level === 'contact' ? 'this person' : l.level})`).join(', ')}</div>
+                )}
               </>
             )}
             <button className="btn" onClick={sendTest} disabled={sending || !prev || prev.missing.length > 0}>{sending ? 'Sending' : 'Send test to me'}</button>

@@ -110,6 +110,7 @@ function BatchCard({ batch: b, d, total }: { batch: Batch; d: Data; total: numbe
           <BatchStatusPill status={b.status} />
         </div>
         {!planned && <div className="small muted">{fmtDay(dateOf(b.scheduled_at))} · {timeOf(b.scheduled_at)}</div>}
+        {!planned && b.reason && (b.status === 'cancelled' || b.status === 'partial') && <div className="small muted">{b.reason}</div>}
         {over && <div className="capwarn"><AlertTriangle {...iconProps} />{total} that day, cap {d.settings.daily_cap}</div>}
         {planned && b.scheduled_at < nowIso() && <div className="xs faint">Due. Goes out on the next run.</div>}
       </div>

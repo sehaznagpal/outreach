@@ -3,7 +3,7 @@ import { ApiError, call, isConfigured } from './api';
 import type { Data, Delta, Table } from './types';
 
 const KEYS: Record<Table, keyof Data> = {
-  Companies: 'companies', Contacts: 'contacts', Lines: 'lines', Copies: 'copies', Batches: 'batches', SendLog: 'sendlog',
+  Companies: 'companies', Contacts: 'contacts', Lines: 'lines', Copies: 'copies', Batches: 'batches', SendLog: 'sendlog', Links: 'links', Signatures: 'signatures',
 };
 
 export const applyDelta = (d: Data, delta?: Delta): Data => {

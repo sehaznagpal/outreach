@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
-import { CalendarDays, Building2, LayoutDashboard, ListChecks, PanelLeftClose, PanelLeftOpen, Plus, Settings as Cog, Mail } from 'lucide-react';
+import { CalendarDays, Building2, ChevronLeft, ChevronRight, LayoutDashboard, ListChecks, Plus, Settings as Cog, Mail } from 'lucide-react';
 import { useStore } from './store';
 import { iconProps, Modal } from './components/ui';
 import { Dashboard } from './pages/Dashboard';
 import { Companies } from './pages/Companies';
 import { CompanyPage } from './pages/CompanyPage';
 import { Logs } from './pages/Logs';
-import { Copies } from './pages/Copies';
+import { Content } from './pages/Content';
 import { Calendar } from './pages/Calendar';
 import { SettingsPage } from './pages/Settings';
 
@@ -15,7 +15,7 @@ const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/companies', label: 'Companies', icon: Building2 },
   { to: '/logs', label: 'Logs', icon: ListChecks },
-  { to: '/copies', label: 'Copies', icon: Mail },
+  { to: '/content', label: 'Content', icon: Mail },
   { to: '/calendar', label: 'Calendar', icon: CalendarDays },
   { to: '/settings', label: 'Settings', icon: Cog },
 ];
@@ -56,23 +56,28 @@ function Rail({ collapsed, setCollapsed, onNew }: { collapsed: boolean; setColla
     const t = setTimeout(() => setRecent(false), 2200);
     return () => clearTimeout(t);
   }, [savedAt]);
+  const tip = collapsed ? 'Expand' : 'Collapse';
   return (
     <aside className="rail" aria-label="Main">
       <div className="rail-top">
-        <span className="brand"><span className="brand-mark" /><span className="brand-text">Outreach</span></span>
-        <button className="icon-btn" aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={() => setCollapsed(!collapsed)}>
-          {collapsed ? <PanelLeftOpen {...iconProps} /> : <PanelLeftClose {...iconProps} />}
+        <button className="brand brand-btn" onClick={() => setCollapsed(!collapsed)} aria-label={`${tip} sidebar`} title={tip}>
+          <span className="brand-mark" /><span className="brand-text">Outreach</span>
         </button>
       </div>
-      <button className="btn add-btn" onClick={onNew} aria-label="New company"><Plus {...iconProps} /><span className="add-label">Company</span></button>
+      <button className="btn add-btn" onClick={onNew} aria-label="New company" title={collapsed ? 'New company' : undefined}><Plus {...iconProps} /><span className="add-label">Company</span></button>
       <nav className="nav">
         {NAV.map((n) => (
-          <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} aria-label={n.label}>
+          <NavLink key={n.to} to={n.to} end={n.end} title={collapsed ? n.label : undefined} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} aria-label={n.label}>
             <n.icon {...iconProps} /><span className="rail-label">{n.label}</span>
           </NavLink>
         ))}
       </nav>
-      <div className="rail-foot"><span className="save-state" aria-live="polite">{saving ? 'Saving' : recent ? 'Saved' : ''}</span></div>
+      <div className="rail-foot">
+        <span className="save-state" aria-live="polite">{saving ? 'Saving' : recent ? 'Saved' : ''}</span>
+        <button className="icon-btn" onClick={() => setCollapsed(!collapsed)} aria-label={`${tip} sidebar`} title={tip}>
+          {collapsed ? <ChevronRight {...iconProps} /> : <ChevronLeft {...iconProps} />}
+        </button>
+      </div>
     </aside>
   );
 }
@@ -88,6 +93,7 @@ export default function App() {
     const h = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (t.closest('input, textarea, select, [contenteditable="true"]') || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === '[') { e.preventDefault(); setCollapsed((c) => !c); return; }
       if (status !== 'ready') return;
       if (e.key === 'n' || e.key === 'N') { e.preventDefault(); setNewOpen(true); }
       if (e.key === '/') {
@@ -120,7 +126,8 @@ export default function App() {
               <Route path="/companies" element={<Companies onNew={() => setNewOpen(true)} />} />
               <Route path="/companies/:id" element={<CompanyPage />} />
               <Route path="/logs" element={<Logs />} />
-              <Route path="/copies" element={<Copies />} />
+              <Route path="/content" element={<Content />} />
+              <Route path="/copies" element={<Navigate to="/content" replace />} />
               <Route path="/calendar" element={<Calendar />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />

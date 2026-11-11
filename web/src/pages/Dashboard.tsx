@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom';
 import { AlertCircle } from 'lucide-react';
 import { useData } from '../store';
 import { computeStats } from '../lib/stats';
-import { addDays, countdown, fmtDay, fmtShort, greeting, isWeekday, timeOf, weekdayIdx } from '../lib/dates';
+import { addDays, countdown, fmtDay, fmtShort, isWeekday, timeOf, weekdayIdx } from '../lib/dates';
+import { motivationFor } from '../content/motivation';
 import { csv } from '../types';
 import { CountUp, Empty, iconProps, Ring } from '../components/ui';
 
@@ -12,7 +13,7 @@ export function Dashboard() {
   const [, tick] = useState(0);
   useEffect(() => { const t = setInterval(() => tick((n) => n + 1), 30000); return () => clearInterval(t); }, []);
   const s = useMemo(() => computeStats(d), [d]);
-  const name = (d.settings.sender_name || 'Sehaz').split(' ')[0];
+  const m = motivationFor(s.today);
   const co = (id: string) => d.companies.find((c) => c.id === id);
   const contactName = (id: string) => d.contacts.find((c) => c.id === id)?.first_name || d.contacts.find((c) => c.id === id)?.name || '';
 
@@ -33,8 +34,9 @@ export function Dashboard() {
       <div className="bento">
         <section className="card grad hero span-8" aria-label="Today">
           <div className="orb" aria-hidden />
-          <h1>{greeting()}, {name}</h1>
-          <p>{heroLine}</p>
+          <h1>{m.headline}</h1>
+          <p className="hero-line">{m.line}</p>
+          <p className="hero-status">{heroLine}</p>
         </section>
 
         <Link to="/logs" className="card grad warm next-batch span-4" style={{ display: 'flex', flexDirection: 'column' }} aria-label="Next batch">
@@ -101,18 +103,18 @@ export function Dashboard() {
 
         <section className="card span-7" aria-label="Recent replies" style={{ minHeight: 340 }}>
           <h2>Recent replies</h2>
-          {s.recentReplies.length ? s.recentReplies.map(({ contact, company, days }) => (
-            <Link key={contact.id} to={`/companies/${contact.company_id}`} className="reply-item">
+          {s.recentReplies.length ? s.recentReplies.map(({ company, who, at, days }) => (
+            <Link key={company.id} to={`/companies/${company.id}`} className="reply-item">
               <div>
-                <div className="reply-name">{contact.name}</div>
-                <div className="small muted">{company?.name}{contact.role ? ` · ${contact.role}` : ''}</div>
+                <div className="reply-name">{company.name}</div>
+                <div className="small muted">Reply from {who || 'someone'}</div>
               </div>
               <div className="small muted right nowrap">
-                {days === null ? 'replied' : days === 0 ? 'same day' : `${days} ${days === 1 ? 'day' : 'days'} after sending`}
-                <div className="xs faint">{fmtShort(contact.replied_at.slice(0, 10))}</div>
+                {days === null ? 'replied' : days === 0 ? 'same day as first email' : `${days} ${days === 1 ? 'day' : 'days'} after first email`}
+                <div className="xs faint">{fmtShort(at.slice(0, 10))}</div>
               </div>
             </Link>
-          )) : <Empty text="No replies yet. They will show up here as soon as someone writes back." />}
+          )) : <Empty text="No replies yet. They will show up here." />}
         </section>
 
         <section className="card span-5" aria-label="Needs attention">

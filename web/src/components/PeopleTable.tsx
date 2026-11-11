@@ -1,8 +1,9 @@
 import { useMemo, useRef, useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, MoreHorizontal } from 'lucide-react';
 import { useData, useStore, uid } from '../store';
 import { csv, type Company, type Contact, type Data } from '../types';
-import { Combo, iconProps, Modal, StatusPill, Switch } from './ui';
+import { Combo, iconProps, Modal, Popover, StatusPill, Switch } from './ui';
+import { LinksEditor } from './LinksEditor';
 import { fmtDay, dateOf, timeOf } from '../lib/dates';
 
 // ---------- helpers ----------
@@ -43,6 +44,7 @@ function useContactActions(company: Company) {
     mutate<{ warnings?: Array<{ email: string; message: string }> }>('saveContacts', { company_id: company.id, contacts: rows }, upsertContacts(optimistic));
   const update = (c: Contact, p: Partial<Contact>) => save([{ id: c.id, ...p }], [{ ...c, ...p }]);
   const setReady = async (ids: string[], ready: boolean) => {
+    if (ready && company.status === 'replied') { toast('error', 'This company replied. Outreach is stopped.'); return; }
     patch((d) => ({ ...d, contacts: d.contacts.map((c) => (ids.includes(c.id) && (ready ? c.status === 'draft' : ['ready', 'scheduled'].includes(c.status)) ? { ...c, status: ready ? 'ready' : 'draft' } : c)) }));
     const res = await mutate<{ errors: Array<{ contact_id: string; message: string }> }>('setReady', { ids, ready });
     if (!res) return;
@@ -89,11 +91,11 @@ export function PeopleTable({ company, contacts }: { company: Company; contacts:
 
       <div className="tbl-wrap">
         <table className="tbl people">
-          <colgroup><col style={{ width: 32 }} /><col style={{ width: 150 }} /><col style={{ width: 150 }} /><col style={{ width: 190 }} /><col style={{ width: 100 }} /><col style={{ width: 150 }} /><col style={{ width: 130 }} /><col style={{ width: 110 }} /><col style={{ width: 170 }} /></colgroup>
+          <colgroup><col style={{ width: 32 }} /><col style={{ width: 150 }} /><col style={{ width: 150 }} /><col style={{ width: 190 }} /><col style={{ width: 100 }} /><col style={{ width: 150 }} /><col style={{ width: 130 }} /><col style={{ width: 110 }} /><col style={{ width: 170 }} /><col style={{ width: 44 }} /></colgroup>
           <thead>
             <tr>
               <th><input type="checkbox" className="checkbox" aria-label="Select all" checked={allSel} onChange={(e) => setSel(e.target.checked ? contacts.map((c) => c.id) : [])} /></th>
-              <th>Name</th><th>Role</th><th>Email</th><th>LinkedIn</th><th>Line</th><th>Copy</th><th>Status</th><th>Action</th>
+              <th>Name</th><th>Role</th><th>Email</th><th>LinkedIn</th><th>Line</th><th>Copy</th><th>Status</th><th>Action</th><th />
             </tr>
           </thead>
           <tbody>
@@ -144,7 +146,7 @@ function PersonRow({ c, company, d, act, lines, roleOpts, addRole, firstCopies, 
   if (c.status === 'draft' || isReady) {
     action = (
       <div className="row" style={{ gap: 10 }}>
-        <Switch label={`Ready: ${c.name}`} checked={isReady} onChange={(v) => act.setReady([c.id], v)} />
+        <Switch label={`Ready: ${c.name}`} checked={isReady} disabled={company.status === 'replied' && !isReady} onChange={(v) => act.setReady([c.id], v)} />
         <span className="small muted nowrap">{c.status === 'scheduled' && batch ? `Batch · ${fmtDay(dateOf(batch.scheduled_at), { weekday: 'short', day: undefined, month: undefined })} ${timeOf(batch.scheduled_at)}` : c.status === 'ready' ? 'Placing in a batch' : ''}</span>
       </div>
     );
@@ -167,7 +169,31 @@ function PersonRow({ c, company, d, act, lines, roleOpts, addRole, firstCopies, 
         options={firstCopies.map((x) => ({ value: x.id, label: x.name, hint: csv(x.tags).join(' · ') }))} onChange={(v) => act.update(c, { copy_override_id: v })} /></td>
       <td><StatusPill status={c.status} /></td>
       <td>{action}</td>
+      <td><RowMenu c={c} /></td>
     </tr>
+  );
+}
+
+function RowMenu({ c }: { c: Contact }) {
+  const [open, setOpen] = useState(false);
+  const [links, setLinks] = useState(false);
+  const btn = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      <button ref={btn} className="icon-btn" aria-label={`More for ${c.name}`} onClick={() => setOpen((o) => !o)}><MoreHorizontal {...iconProps} /></button>
+      {open && (
+        <Popover anchor={btn.current} onClose={() => setOpen(false)} width={220}>
+          <button className="opt" onClick={() => { setOpen(false); setLinks(true); }}>Add link for this person</button>
+        </Popover>
+      )}
+      {links && (
+        <Modal title={`Links for ${c.name}`} onClose={() => setLinks(false)}>
+          <p className="help" style={{ marginBottom: 14 }}>Available only in this person's emails. They win over company and global links with the same key.</p>
+          <LinksEditor scope="contact" companyId={c.company_id} contactId={c.id} />
+          <div className="modal-foot"><button className="btn" onClick={() => setLinks(false)}>Done</button></div>
+        </Modal>
+      )}
+    </>
   );
 }
 
@@ -214,9 +240,9 @@ function NewRow({ company, d, act, roleOpts, addRole }: { company: Company; d: D
           onChange={(e) => edit({ email: e.target.value })}
           onKeyDown={(e) => { if (e.key === 'Tab' && !e.shiftKey && !f.email && suggestion) setF({ ...f, email: suggestion }); next(e, () => linkRef.current?.focus()); }} /></td>
         <td><input ref={linkRef} className="input bare" aria-label="New person LinkedIn" placeholder="LinkedIn" value={f.linkedin_url} onChange={(e) => edit({ linkedin_url: e.target.value })} onKeyDown={(e) => next(e, () => void commit())} /></td>
-        <td colSpan={4}><button className="btn sm ghost" onClick={() => void commit()} disabled={!f.name.trim()}>Add</button></td>
+        <td colSpan={5}><button className="btn sm ghost" onClick={() => void commit()} disabled={!f.name.trim()}>Add</button></td>
       </tr>
-      {warn && <tr><td /><td colSpan={8}><div className="warn"><AlertTriangle {...iconProps} />{warn}</div></td></tr>}
+      {warn && <tr><td /><td colSpan={9}><div className="warn"><AlertTriangle {...iconProps} />{warn}</div></td></tr>}
     </>
   );
 }

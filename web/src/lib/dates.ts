@@ -62,11 +62,6 @@ export const countdown = (iso: string): string => {
   return `in ${d} day${d > 1 ? 's' : ''}`;
 };
 
-export const greeting = (): string => {
-  const h = Number(parts(new Date()).hour);
-  return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
-};
-
 /** value for <input type="datetime-local"> */
 export const toLocalInput = (iso: string): string => String(iso).slice(0, 16);
 

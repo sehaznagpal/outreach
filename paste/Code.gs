@@ -8,17 +8,19 @@
 var TZ = 'Asia/Kolkata';
 
 var SCHEMA = {
-  Companies: ['id', 'name', 'industry', 'domain', 'website', 'opening_title', 'opening_url', 'pitch_page_url', 'email_pattern', 'notes', 'copy_ids', 'followup_copy_ids', 'batch_size', 'followup_after_days', 'max_followups', 'status', 'created_at'],
+  Companies: ['id', 'name', 'industry', 'domain', 'website', 'opening_title', 'opening_url', 'pitch_page_url', 'email_pattern', 'notes', 'copy_ids', 'followup_copy_ids', 'batch_size', 'followup_after_days', 'max_followups', 'status', 'created_at', 'replied_at', 'replied_by'],
   Contacts: ['id', 'company_id', 'name', 'first_name', 'role', 'email', 'linkedin_url', 'line_override', 'copy_override_id', 'status', 'assigned_line', 'assigned_copy_id', 'batch_id', 'thread_id', 'first_sent_at', 'last_sent_at', 'followups_sent', 'replied_at', 'created_at'],
   Lines: ['id', 'company_id', 'text'],
-  Copies: ['id', 'name', 'kind', 'tags', 'subject', 'body_html', 'uses_vars', 'image_url', 'include_signature', 'archived', 'updated_at'],
-  Batches: ['id', 'company_id', 'type', 'scheduled_at', 'status', 'contact_ids', 'sent_at', 'created_at'],
+  Copies: ['id', 'name', 'kind', 'tags', 'subject', 'body_html', 'uses_vars', 'image_url', 'signature_id', 'auto_link', 'archived', 'updated_at'],
+  Batches: ['id', 'company_id', 'type', 'scheduled_at', 'status', 'contact_ids', 'sent_at', 'created_at', 'reason'],
+  Links: ['id', 'label', 'url', 'key', 'auto_words', 'is_primary', 'scope', 'company_id', 'contact_id', 'created_at'],
+  Signatures: ['id', 'name', 'html', 'image_url', 'is_default', 'updated_at'],
   SendLog: ['id', 'contact_id', 'company_id', 'batch_id', 'type', 'copy_id', 'line_used', 'subject', 'sent_at', 'thread_id', 'result', 'error'],
   Roles: ['role'],
   Settings: ['key', 'value']
 };
 
-var BOOLS = { include_signature: 1, archived: 1 };
+var BOOLS = { auto_link: 1, archived: 1, is_primary: 1, is_default: 1 };
 var NUMS = { batch_size: 1, followup_after_days: 1, max_followups: 1, followups_sent: 1 };
 
 var SEED_ROLES = ['Founder', 'Co-founder', 'CEO', 'CTO', 'CPO', 'Chief of Staff', "Founder's Office", 'Head of Product', 'Product Manager', 'Associate Product Manager', 'Head of Design', 'Design Lead', 'Design Manager', 'Product Designer', 'UX Researcher', 'Engineering Manager', 'Hiring Manager', 'HR', 'HR Business Partner', 'Talent Acquisition', 'Recruiter', 'Other'];
@@ -29,9 +31,7 @@ var DEFAULT_SETTINGS = {
   default_send_time: '10:30',
   followup_after_days: '4',
   max_followups: '1',
-  signature_html: '',
   sender_name: 'Sehaz',
-  portfolio_url: '',
   test_mode: 'true',
   test_email: '',
   paused: 'false',
@@ -182,9 +182,7 @@ function settings_() {
     default_send_time: /^\d{2}:\d{2}$/.test(r.default_send_time) ? r.default_send_time : '10:30',
     followup_after_days: Number(r.followup_after_days) || 4,
     max_followups: r.max_followups === '' ? 1 : Number(r.max_followups),
-    signature_html: r.signature_html || '',
     sender_name: r.sender_name || '',
-    portfolio_url: r.portfolio_url || '',
     test_mode: String(r.test_mode) === 'true',
     test_email: r.test_email || '',
     paused: String(r.paused) === 'true',
@@ -227,10 +225,115 @@ function dRm_(delta, name, id) {
   if (delta.upsert[name]) delta.upsert[name] = delta.upsert[name].filter(function (r) { return r.id !== id; });
 }
 
+
+// ---------- re-read straight from the Sheet ----------
+
+function fresh_(name, id) {
+  delete CACHE_[name];
+  return byId_(name, id);
+}
+
+// ---------- schema + content migration ----------
+
+var SCHEMA_VERSION = '2';
+
+function transformCopy_(o) {
+  if (o.include_signature !== undefined) {
+    o.signature_id = String(o.include_signature).toLowerCase() === 'false' ? 'none' : '';
+  }
+  if (o.auto_link === undefined || o.auto_link === '') o.auto_link = 'true';
+}
+
+/** Creates missing tabs and rewrites any tab whose header differs from SCHEMA, keeping data. */
+function migrateSchema_() {
+  var ss = ss_();
+  Object.keys(SCHEMA).forEach(function (name) {
+    var cols = SCHEMA[name];
+    var sh = ss.getSheetByName(name) || ss.insertSheet(name);
+    var lastRow = sh.getLastRow(), lastCol = sh.getLastColumn();
+    var oldHeader = lastRow >= 1 && lastCol >= 1 ? sh.getRange(1, 1, 1, lastCol).getValues()[0].map(String) : [];
+    var same = oldHeader.length === cols.length && cols.every(function (c, i) { return oldHeader[i] === c; });
+    var out = [];
+    if (!same) {
+      var oldRows = lastRow > 1 ? sh.getRange(2, 1, lastRow - 1, lastCol).getValues() : [];
+      oldRows.forEach(function (r) {
+        var o = {}, any = false;
+        oldHeader.forEach(function (h, i) { if (h) { o[h] = r[i]; if (r[i] !== '') any = true; } });
+        if (!any) return;
+        if (name === 'Copies') transformCopy_(o);
+        out.push(cols.map(function (c) { return toStr_(o[c]); }));
+      });
+      sh.clearContents();
+    }
+    if (sh.getMaxColumns() < cols.length) sh.insertColumnsAfter(sh.getMaxColumns(), cols.length - sh.getMaxColumns());
+    sh.getRange(1, 1, sh.getMaxRows(), cols.length).setNumberFormat('@');
+    sh.getRange(1, 1, 1, cols.length).setValues([cols]).setFontWeight('bold');
+    sh.setFrozenRows(1);
+    if (out.length) sh.getRange(2, 1, out.length, cols.length).setValues(out);
+  });
+  CACHE_ = {};
+}
+
+/** Seeds the three links and moves the old Settings signature / portfolio into Content. */
+function migrateContent_() {
+  CACHE_ = {};
+  var sig = '', port = '';
+  getAll_('Settings').forEach(function (r) {
+    if (r.key === 'signature_html') sig = String(r.value || '');
+    if (r.key === 'portfolio_url') port = String(r.value || '');
+  });
+  if (!getAll_('Links').length) {
+    var base = { scope: 'global', company_id: '', contact_id: '', created_at: nowIso_() };
+    [
+      { label: 'Portfolio', url: port.trim() || 'https://sehaznagpal.vercel.app', key: 'portfolio', auto_words: 'portfolio, my work', is_primary: true },
+      { label: 'CV', url: '', key: 'cv', auto_words: '', is_primary: false },
+      { label: 'LinkedIn', url: '', key: 'linkedin', auto_words: '', is_primary: false }
+    ].forEach(function (l) { for (var k in base) l[k] = base[k]; insert_('Links', l); });
+  } else if (port.trim()) {
+    var pl = where_('Links', function (l) { return l.scope === 'global' && l.key === 'portfolio'; })[0];
+    if (pl && !pl.url) update_('Links', pl.id, { url: port.trim() });
+  }
+  if (sig.trim()) {
+    var hasDefault = getAll_('Signatures').some(function (x) { return x.is_default; });
+    insert_('Signatures', { name: 'Default', html: sig, image_url: '', is_default: !hasDefault, updated_at: nowIso_() });
+  }
+  getAll_('Settings').forEach(function (r) {
+    if ((r.key === 'signature_html' || r.key === 'portfolio_url') && r.value !== '') {
+      sheet_('Settings').getRange(r._row, 2).setValue('');
+      r.value = '';
+    }
+  });
+}
+
+function ensureMigrated_() {
+  var props = PropertiesService.getScriptProperties();
+  var upToDate = props.getProperty('SCHEMA_VERSION') === SCHEMA_VERSION;
+  if (upToDate) {
+    var pending = getAll_('Settings').some(function (r) {
+      return (r.key === 'signature_html' || r.key === 'portfolio_url') && String(r.value).trim() !== '';
+    });
+    if (!pending) return;
+  }
+  var lock = LockService.getScriptLock();
+  lock.waitLock(25000);
+  try {
+    CACHE_ = {};
+    if (props.getProperty('SCHEMA_VERSION') !== SCHEMA_VERSION) {
+      migrateSchema_();
+      props.setProperty('SCHEMA_VERSION', SCHEMA_VERSION);
+    }
+    migrateContent_();
+  } finally {
+    lock.releaseLock();
+  }
+  CACHE_ = {};
+}
+
 // ===== Render.gs =====
 /**
  * Render.gs — template + contact + company → final email (subject, HTML, plain).
- * The same logic is mirrored in web/src/lib/render.ts for the live Copies preview.
+ * Order: variables → {{link:key}} / href="link:key" → auto-link words → signature.
+ * The same logic is mirrored in web/src/lib/render.ts for the live Content preview.
  */
 
 var VAR_NAMES = ['first_name', 'name', 'role', 'company', 'line', 'opening_title', 'opening_url', 'pitch_page_url', 'portfolio_url', 'sender_name'];
@@ -239,7 +342,28 @@ function escHtml_(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function varsFor_(contact, company, S, lineOverride) {
+function escRe_(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function slug_(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
+/** Links visible to a contact: global, then company, then person (later levels win on the same key). */
+function linkMap_(companyId, contactId) {
+  var map = {};
+  var put = function (l, level) {
+    if (!l.key) return;
+    map[l.key] = { key: l.key, label: l.label, url: l.url, auto_words: csv_(l.auto_words), level: level };
+  };
+  where_('Links', function (l) { return l.scope === 'global'; }).forEach(function (l) { put(l, 'global'); });
+  if (companyId) where_('Links', function (l) { return l.scope === 'company' && l.company_id === companyId; }).forEach(function (l) { put(l, 'company'); });
+  if (contactId) where_('Links', function (l) { return l.scope === 'contact' && l.contact_id === contactId; }).forEach(function (l) { put(l, 'contact'); });
+  return map;
+}
+
+function varsFor_(contact, company, S, lineOverride, links) {
   return {
     first_name: contact.first_name || String(contact.name || '').split(/\s+/)[0] || '',
     name: contact.name || '',
@@ -249,7 +373,7 @@ function varsFor_(contact, company, S, lineOverride) {
     opening_title: company.opening_title || '',
     opening_url: company.opening_url || '',
     pitch_page_url: company.pitch_page_url || '',
-    portfolio_url: S.portfolio_url || '',
+    portfolio_url: links && links.portfolio ? links.portfolio.url : '',
     sender_name: S.sender_name || ''
   };
 }
@@ -263,11 +387,60 @@ function usedVars_(text) {
   return found;
 }
 
+/** Link keys referenced explicitly, as {{link:key}} or href="link:key". */
+function usedLinkKeys_(text) {
+  var found = [];
+  var add = function (m, k) { if (found.indexOf(k) < 0) found.push(k); return m; };
+  String(text || '').replace(/\{\{\s*link:([\w-]+)\s*\}\}/g, add).replace(/href="link:([\w-]+)"/g, add);
+  return found;
+}
+
 function fill_(text, vars, escape) {
   return String(text || '').replace(/\{\{\s*(\w+)\s*\}\}/g, function (m, v) {
     var val = vars[v] === undefined ? '' : String(vars[v]);
     return escape ? escHtml_(val) : val;
   });
+}
+
+function resolveLinkTokens_(html, links, used) {
+  html = html.replace(/\{\{\s*link:([\w-]+)\s*\}\}/g, function (m, k) {
+    var l = links[k];
+    if (!l || !l.url) return '';
+    used[k] = l;
+    return '<a href="' + escHtml_(l.url) + '">' + escHtml_(l.label) + '</a>';
+  });
+  return html.replace(/href="link:([\w-]+)"/g, function (m, k) {
+    var l = links[k];
+    if (!l || !l.url) return 'href="#"';
+    used[k] = l;
+    return 'href="' + escHtml_(l.url) + '"';
+  });
+}
+
+/** First whole-word, case-insensitive occurrence of each link's auto words becomes a link (never inside an existing link). */
+function autoLink_(html, links, used) {
+  Object.keys(links).forEach(function (k) {
+    var l = links[k];
+    if (!l.url || !l.auto_words.length || used[k]) return;
+    var words = l.auto_words.slice().sort(function (a, b) { return b.length - a.length; }).map(escRe_);
+    var re = new RegExp('(?<![\\w])(' + words.join('|') + ')(?![\\w])', 'i');
+    var parts = html.split(/(<[^>]+>)/);
+    var depth = 0, done = false;
+    for (var i = 0; i < parts.length && !done; i++) {
+      var p = parts[i];
+      if (/^<a[\s>]/i.test(p)) depth++;
+      else if (/^<\/a\s*>/i.test(p)) depth = Math.max(0, depth - 1);
+      else if (p.charAt(0) !== '<' && depth === 0) {
+        var m = re.exec(p);
+        if (m) {
+          parts[i] = p.slice(0, m.index) + '<a href="' + escHtml_(l.url) + '">' + m[0] + '</a>' + p.slice(m.index + m[0].length);
+          done = true;
+        }
+      }
+    }
+    if (done) { html = parts.join(''); used[k] = l; }
+  });
+  return html;
 }
 
 function htmlToPlain_(html) {
@@ -281,32 +454,63 @@ function htmlToPlain_(html) {
   return s.replace(/\n{3,}/g, '\n\n').trim();
 }
 
+/** The signature a copy uses: its own, the default (blank), or none ("none"). */
+function signatureFor_(copy) {
+  if (copy.signature_id === 'none') return null;
+  if (copy.signature_id) {
+    var own = byId_('Signatures', copy.signature_id);
+    if (own) return own;
+  }
+  return where_('Signatures', function (s) { return s.is_default; })[0] || null;
+}
+
 /**
- * Returns { subject, html, plain, missing[] }. `missing` lists variables that are
- * used by the copy but empty (or unknown); callers must refuse to send when non-empty.
- * opts: { banner: string }  (test mode banner shown at the top)
+ * Returns { subject, html, plain, missing[], links_used[] }. `missing` lists variables or links that are
+ * used but empty / unknown; callers must refuse to send when non-empty.
+ * opts: { banner: string, line: string }
  */
 function renderEmail_(contact, company, copy, S, opts) {
   opts = opts || {};
-  var vars = varsFor_(contact, company, S, opts.line);
-  var used = usedVars_(copy.subject).concat(usedVars_(copy.body_html));
+  var links = linkMap_(company.id, contact.id);
+  var vars = varsFor_(contact, company, S, opts.line, links);
+  var sig = signatureFor_(copy);
+  var sigHtml = sig ? sig.html : '';
+  var all = String(copy.subject) + '\n' + String(copy.body_html) + '\n' + sigHtml;
+
   var missing = [];
-  used.forEach(function (v) {
+  usedVars_(all).forEach(function (v) {
     if (missing.indexOf(v) < 0 && (VAR_NAMES.indexOf(v) < 0 || !vars[v])) missing.push(v);
   });
+  usedLinkKeys_(all).forEach(function (k) {
+    if (!links[k] || !links[k].url) missing.push('link:' + k);
+  });
 
-  var subject = fill_(copy.subject, vars, false);
-  var body = fill_(copy.body_html, vars, true);
+  var used = {};
+  var subject = fill_(copy.subject, vars, false).replace(/\{\{\s*link:([\w-]+)\s*\}\}/g, function (m, k) {
+    return links[k] ? links[k].label : '';
+  });
+  var body = resolveLinkTokens_(fill_(copy.body_html, vars, true), links, used);
+  if (copy.auto_link) body = autoLink_(body, links, used);
+
   var parts = [body];
   if (copy.image_url) parts.push('<div><img src="' + escHtml_(copy.image_url) + '" style="max-width:480px;height:auto;" alt=""></div>');
-  if (copy.include_signature && S.signature_html) parts.push('<div style="margin-top:16px">' + S.signature_html + '</div>');
+  var sigRendered = '';
+  if (sig) {
+    sigRendered = resolveLinkTokens_(fill_(sig.html, vars, true), links, used);
+    var sigInner = sigRendered;
+    if (sig.image_url) sigInner += '<div style="margin-top:8px"><img src="' + escHtml_(sig.image_url) + '" style="max-width:480px;height:auto;" alt=""></div>';
+    parts.push('<div style="margin-top:16px">' + sigInner + '</div>');
+  }
   var inner = parts.join('\n');
   if (opts.banner) inner = '<div style="margin-bottom:16px;padding:8px 12px;border:1px solid #999;font-size:12px">' + escHtml_(opts.banner) + '</div>' + inner;
 
   var html = '<div style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5">' + inner + '</div>';
   var plain = (opts.banner ? opts.banner + '\n\n' : '') + htmlToPlain_(body);
-  if (copy.include_signature && S.signature_html) plain += '\n\n' + htmlToPlain_(S.signature_html);
-  return { subject: subject, html: html, plain: plain, missing: missing };
+  if (sigRendered) plain += '\n\n' + htmlToPlain_(sigRendered);
+  var linksUsed = Object.keys(used).map(function (k) {
+    return { key: k, label: used[k].label, url: used[k].url, level: used[k].level };
+  });
+  return { subject: subject, html: html, plain: plain, missing: missing, links_used: linksUsed };
 }
 
 /** Pick the copy a contact should be rendered with (assigned, override, else the company's first). */
@@ -461,6 +665,7 @@ function setReady_(ids, ready) {
     }
 
     if (c.status !== 'draft') return;
+    if (company.status === 'replied') { errors.push({ contact_id: c.id, message: 'This company replied. Outreach is stopped.' }); return; }
     if (!c.email) { errors.push({ contact_id: c.id, message: 'No email address.' }); return; }
     var copyId = assignCopyId_(c, company);
     if (!copyId) { errors.push({ contact_id: c.id, message: 'Pick at least one copy for this company first.' }); return; }
@@ -503,7 +708,7 @@ function cancelBatch_(batchId) {
     var patch = b.type === 'first' ? { status: 'ready', batch_id: '' } : { batch_id: '' };
     dUp_(delta, 'Contacts', update_('Contacts', c.id, patch));
   });
-  dUp_(delta, 'Batches', update_('Batches', b.id, { status: 'cancelled' }));
+  dUp_(delta, 'Batches', update_('Batches', b.id, { status: 'cancelled', reason: 'Cancelled by you' }));
   return { delta: delta };
 }
 
@@ -628,8 +833,10 @@ function runTrigger() {
   try {
     var S = settings_();
     if (S.paused) return;
+    detectReplies_();   // always before sending
+    CACHE_ = {};
     sendDue_(S);
-    checkInbox_(S);
+    checkBounces_();
   } finally {
     lock.releaseLock();
   }
@@ -719,15 +926,21 @@ function sendDue_(S) {
   var capHit = false;
 
   due.forEach(function (batch) {
-    var company = byId_('Companies', batch.company_id);
-    if (!company || company.status === 'paused' || company.status === 'done') {
-      if (!company) update_('Batches', batch.id, { status: 'cancelled' });
-      return;
-    }
+    var company = fresh_('Companies', batch.company_id);
+    if (!company) { update_('Batches', batch.id, { status: 'cancelled', reason: 'Company removed' }); return; }
+    if (company.status === 'paused' || company.status === 'done' || company.status === 'replied') return;
     var sent = 0, errors = 0, remaining = 0;
+    var sentNames = [], skippedNames = [], stopped = false;
 
     csv_(batch.contact_ids).forEach(function (id) {
-      var c = byId_('Contacts', id);
+      // re-read from the Sheet right before each email
+      company = fresh_('Companies', batch.company_id);
+      var c = fresh_('Contacts', id);
+      if (company && company.status === 'replied') {
+        stopped = true;
+        if (c) skippedNames.push(c.name);
+        return;
+      }
       var eligible = c && c.batch_id === batch.id && !c.replied_at &&
         (batch.type === 'first' ? c.status === 'scheduled' : (c.status === 'sent' || c.status === 'followed_up'));
       if (!eligible) return;
@@ -743,7 +956,7 @@ function sendDue_(S) {
         errors++;
         return;
       }
-      if (sendOne_(batch, c, company, S)) { sent++; okToday++; }
+      if (sendOne_(batch, c, company, S)) { sent++; okToday++; sentNames.push(c.name); }
       else {
         errors++;
         // send the contact back to Ready so it can be re-planned once fixed
@@ -751,6 +964,13 @@ function sendDue_(S) {
       }
     });
 
+    if (stopped) {
+      update_('Batches', batch.id, {
+        status: sent > 0 ? 'partial' : 'cancelled', sent_at: sent > 0 ? now : '',
+        reason: 'Company replied. Sent: ' + (sentNames.join(', ') || 'none') + '. Skipped: ' + (skippedNames.join(', ') || 'none') + '.'
+      });
+      return;
+    }
     if (S.test_mode || remaining > 0) return; // batch stays planned
     var status = sent === 0 && errors === 0 ? 'cancelled' : (errors > 0 ? 'partial' : 'sent');
     update_('Batches', batch.id, { status: status, sent_at: now });
@@ -761,32 +981,127 @@ function sendDue_(S) {
 
 // ===== Inbox.gs =====
 /**
- * Inbox.gs — reply + bounce detection. Runs from the same trigger, after sending.
+ * Inbox.gs — reply + bounce detection. One reply from anyone at a company stops the whole company.
+ * Reply detection always runs before sending, inside the same lock as sending and UI writes.
  */
 
-function checkInbox_(S) {
-  try { checkReplies_(); } catch (e) { console.error('replies: ' + e); }
-  try { checkBounces_(); } catch (e) { console.error('bounces: ' + e); }
+var PUBLIC_DOMAINS = ['gmail.com', 'outlook.com', 'yahoo.com', 'hotmail.com', 'icloud.com', 'proton.me'];
+
+function cleanDomain_(d) {
+  return String(d || '').toLowerCase().trim().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/[\/?#].*$/, '');
 }
 
-function checkReplies_() {
+function fromEmail_(m) {
+  var from = String(m.getFrom() || '');
+  var hit = /<([^>]+)>/.exec(from);
+  return (hit ? hit[1] : from).trim().toLowerCase();
+}
+
+function isOtherSender_(m, me) {
+  var from = String(m.getFrom() || '').toLowerCase();
+  return from.indexOf(me) < 0 && !/mailer-daemon|postmaster/.test(from);
+}
+
+/** Automatic replies do not count: Auto-Submitted header (other than "no") or an auto-looking subject. */
+function isAutomatic_(m) {
+  var subject = String(m.getSubject() || '').trim().toLowerCase();
+  if (/^(automatic reply|auto:|out of office|ooo)/.test(subject)) return true;
+  var head = String(m.getRawContent() || '').split(/\r?\n\r?\n/)[0];
+  var hit = /^Auto-Submitted:\s*(.+)$/im.exec(head);
+  return !!(hit && hit[1].trim().toLowerCase() !== 'no');
+}
+
+/** Stops all outreach to a company. Caller must hold the script lock. Returns a delta. */
+function companyReplied_(company, contact, who, atIso) {
+  var delta = newDelta_();
+  atIso = atIso || nowIso_();
+
+  if (contact) dUp_(delta, 'Contacts', update_('Contacts', contact.id, { status: 'replied', replied_at: atIso, batch_id: '' }));
+  dUp_(delta, 'Companies', update_('Companies', company.id, { status: 'replied', replied_at: atIso, replied_by: contact ? contact.name : who }));
+
+  where_('Batches', function (b) { return b.company_id === company.id && b.status === 'planned'; }).slice().forEach(function (b) {
+    var sentIds = where_('SendLog', function (r) { return r.batch_id === b.id && r.result === 'ok'; }).map(function (r) { return r.contact_id; });
+    var sent = [], skipped = [];
+    csv_(b.contact_ids).forEach(function (id) {
+      var c = byId_('Contacts', id);
+      (sentIds.indexOf(id) >= 0 ? sent : skipped).push(c ? c.name : id);
+    });
+    var partial = sent.length > 0;
+    var reason = 'Company replied' + (partial ? '. Sent: ' + sent.join(', ') + '. Skipped: ' + (skipped.join(', ') || 'none') + '.' : '');
+    dUp_(delta, 'Batches', update_('Batches', b.id, { status: partial ? 'partial' : 'cancelled', reason: reason, sent_at: partial ? atIso : '' }));
+  });
+
+  where_('Contacts', function (c) { return c.company_id === company.id; }).forEach(function (c) {
+    if (contact && c.id === contact.id) return;
+    if (['draft', 'ready', 'scheduled', 'sent', 'followed_up'].indexOf(c.status) < 0) return;
+    dUp_(delta, 'Contacts', update_('Contacts', c.id, { status: 'stopped', batch_id: '' }));
+  });
+  return delta;
+}
+
+function resumeCompany_(companyId) {
+  var delta = newDelta_();
+  var company = byId_('Companies', companyId);
+  if (!company) throw new Error('Company not found');
+  dUp_(delta, 'Companies', update_('Companies', company.id, { status: 'active' }));
+  where_('Contacts', function (c) { return c.company_id === companyId && c.status === 'stopped'; }).forEach(function (c) {
+    dUp_(delta, 'Contacts', update_('Contacts', c.id, { status: 'draft', batch_id: '' }));
+  });
+  return { delta: delta };
+}
+
+function markCompanyReplied_(companyId, contactId, who) {
+  var company = byId_('Companies', companyId);
+  if (!company) throw new Error('Company not found');
+  var contact = contactId ? byId_('Contacts', contactId) : null;
+  return { delta: companyReplied_(company, contact, who || 'Someone', nowIso_()) };
+}
+
+/** Looks for a reply at every company that has not replied yet. Runs before every send. */
+function detectReplies_() {
   var me = Session.getEffectiveUser().getEmail().toLowerCase();
   var cutoff = isoFromDate_(new Date(Date.now() - 30 * 86400000));
-  var open = where_('Contacts', function (c) {
-    return (c.status === 'sent' || c.status === 'followed_up') && c.thread_id && c.first_sent_at >= cutoff;
-  });
-  open.forEach(function (c) {
-    var thread = GmailApp.getThreadById(c.thread_id);
-    if (!thread) return;
-    var reply = null;
-    thread.getMessages().forEach(function (m) {
-      var from = m.getFrom().toLowerCase();
-      if (from.indexOf(me) >= 0 || /mailer-daemon|postmaster/.test(from)) return;
-      if (!reply) reply = m;
-    });
-    if (!reply) return;
-    cancelFollowups_(c);
-    update_('Contacts', c.id, { status: 'replied', replied_at: isoFromDate_(reply.getDate()), batch_id: '' });
+
+  where_('Companies', function (c) { return c.status !== 'replied' && c.status !== 'done'; }).slice().forEach(function (company) {
+    try {
+      var people = where_('Contacts', function (c) { return c.company_id === company.id; });
+      var sentAt = people.filter(function (c) { return c.first_sent_at; }).map(function (c) { return c.first_sent_at; }).sort();
+      if (!sentAt.length) return;
+      var hit = null;
+
+      // 1. any message from someone else in this company's outreach threads
+      people.filter(function (c) {
+        return (c.status === 'sent' || c.status === 'followed_up') && c.thread_id && c.first_sent_at >= cutoff;
+      }).forEach(function (c) {
+        if (hit) return;
+        var thread = GmailApp.getThreadById(c.thread_id);
+        if (!thread) return;
+        thread.getMessages().forEach(function (m) {
+          if (hit || !isOtherSender_(m, me) || isAutomatic_(m)) return;
+          hit = { contact: c, who: fromEmail_(m), at: m.getDate() };
+        });
+      });
+
+      // 2. any email from the company's domain after my first email (new threads, forwards)
+      var domain = cleanDomain_(company.domain);
+      if (!hit && domain && PUBLIC_DOMAINS.indexOf(domain) < 0) {
+        var first = new Date(sentAt[0]).getTime();
+        GmailApp.search('from:@' + domain + ' after:' + Math.floor(first / 1000), 0, 20).forEach(function (t) {
+          t.getMessages().forEach(function (m) {
+            if (hit || m.getDate().getTime() < first) return;
+            if (String(m.getFrom()).toLowerCase().indexOf('@' + domain) < 0) return;
+            if (!isOtherSender_(m, me) || isAutomatic_(m)) return;
+            var email = fromEmail_(m);
+            var known = people.filter(function (p) { return String(p.email).toLowerCase() === email; })[0] || null;
+            hit = { contact: known, who: email, at: m.getDate() };
+          });
+        });
+      }
+
+      if (hit) companyReplied_(company, hit.contact, hit.who, isoFromDate_(hit.at));
+    } catch (e) {
+      console.error('reply check for ' + company.name + ': ' + e);
+    }
   });
 }
 
@@ -863,6 +1178,7 @@ function sheetUrl_() {
 // ---------- read actions ----------
 
 function bootstrap_() {
+  ensureMigrated_();
   var since = isoFromDate_(new Date(Date.now() - 120 * 86400000));
   var raw = rawSettings_();
   return {
@@ -872,6 +1188,8 @@ function bootstrap_() {
     contacts: rows_('Contacts'),
     lines: rows_('Lines'),
     copies: rows_('Copies'),
+    links: rows_('Links'),
+    signatures: rows_('Signatures'),
     batches: rows_('Batches', function (b) { return b.status === 'planned' || b.scheduled_at >= since; }),
     sendlog: rows_('SendLog', function (r) { return r.sent_at >= since; }),
     meta: {
@@ -954,6 +1272,7 @@ function saveCompany_(p) {
     if (c[f] === undefined) return;
     patch[f] = (f === 'copy_ids' || f === 'followup_copy_ids') ? csvOf_(c[f]) : c[f];
   });
+  if (patch.status === 'replied') throw new Error('Use Mark as replied for that.');
   var delta = newDelta_();
   var row;
   if (c.id) {
@@ -964,7 +1283,7 @@ function saveCompany_(p) {
       name: patch.name, industry: patch.industry || '', domain: patch.domain || '', website: patch.website || '',
       opening_title: '', opening_url: '', pitch_page_url: '', email_pattern: '', notes: '',
       copy_ids: '', followup_copy_ids: '', batch_size: 4, followup_after_days: null, max_followups: null,
-      status: 'active', created_at: nowIso_()
+      status: 'active', created_at: nowIso_(), replied_at: '', replied_by: ''
     });
     row = update_('Companies', row.id, patch);
   }
@@ -977,8 +1296,9 @@ function deleteCompany_(p) {
   where_('Contacts', function (c) { return c.company_id === p.id; }).slice().forEach(function (c) { dRm_(delta, 'Contacts', c.id); });
   where_('Lines', function (l) { return l.company_id === p.id; }).slice().forEach(function (l) { dRm_(delta, 'Lines', l.id); });
   where_('Batches', function (b) { return b.company_id === p.id; }).slice().forEach(function (b) { dRm_(delta, 'Batches', b.id); });
+  where_('Links', function (l) { return l.company_id === p.id; }).slice().forEach(function (l) { dRm_(delta, 'Links', l.id); });
   // delete bottom-up so row numbers stay valid
-  ['Contacts', 'Lines', 'Batches'].forEach(function (name) {
+  ['Contacts', 'Lines', 'Batches', 'Links'].forEach(function (name) {
     var ids = (delta.remove[name] || []).slice();
     ids.forEach(function (id) { remove_(name, id); });
   });
@@ -1034,6 +1354,7 @@ function removeContact_(p) {
   if (c.batch_id) {
     dropContactFromBatch_(c.batch_id, c.id, delta);
   }
+  where_('Links', function (l) { return l.contact_id === c.id; }).slice().forEach(function (l) { remove_('Links', l.id); dRm_(delta, 'Links', l.id); });
   remove_('Contacts', c.id);
   dRm_(delta, 'Contacts', c.id);
   return { delta: delta };
@@ -1063,7 +1384,7 @@ function saveCopy_(p) {
   var patch = {
     name: c.name, kind: c.kind === 'followup' ? 'followup' : 'first', tags: csvOf_(c.tags),
     subject: c.subject || '', body_html: body, image_url: c.image_url || '',
-    include_signature: !!c.include_signature, updated_at: nowIso_()
+    signature_id: c.signature_id || '', auto_link: c.auto_link !== false, updated_at: nowIso_()
   };
   patch.uses_vars = usedVars_(patch.subject).concat(usedVars_(body)).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(',');
   var row;
@@ -1081,6 +1402,83 @@ function saveCopy_(p) {
 function archiveCopy_(p) {
   var delta = newDelta_();
   dUp_(delta, 'Copies', update_('Copies', p.id, { archived: p.archived !== false, updated_at: nowIso_() }));
+  return { delta: delta };
+}
+
+function saveLink_(p) {
+  var l = p.link || {};
+  var delta = newDelta_();
+  var scope = l.scope === 'company' || l.scope === 'contact' ? l.scope : 'global';
+  var label = String(l.label || '').trim();
+  if (!label) throw new Error('Label is required');
+  var key = slug_(l.key || label);
+  if (!key) throw new Error('Key is required');
+  var companyId = scope === 'global' ? '' : String(l.company_id || '');
+  var contactId = scope === 'contact' ? String(l.contact_id || '') : '';
+  if (scope === 'contact' && !companyId) {
+    var owner = byId_('Contacts', contactId);
+    companyId = owner ? owner.company_id : '';
+  }
+  var dup = where_('Links', function (o) {
+    return o.id !== l.id && o.key === key && o.scope === scope && o.company_id === companyId && o.contact_id === contactId;
+  })[0];
+  if (dup) throw new Error('Another link already uses the key "' + key + '".');
+  var patch = {
+    label: label, url: String(l.url || '').trim(), key: key,
+    auto_words: csv_(Array.isArray(l.auto_words) ? l.auto_words.join(',') : l.auto_words).join(', '),
+    is_primary: scope === 'global' && !!l.is_primary, scope: scope, company_id: companyId, contact_id: contactId
+  };
+  var row;
+  if (l.id && byId_('Links', l.id)) row = update_('Links', l.id, patch);
+  else { patch.id = l.id; patch.created_at = nowIso_(); row = insert_('Links', patch); }
+  dUp_(delta, 'Links', row);
+  if (patch.is_primary) {
+    where_('Links', function (o) { return o.scope === 'global' && o.is_primary && o.id !== row.id; }).forEach(function (o) {
+      dUp_(delta, 'Links', update_('Links', o.id, { is_primary: false }));
+    });
+  }
+  return { delta: delta, id: row.id };
+}
+
+function deleteLink_(p) {
+  var delta = newDelta_();
+  remove_('Links', p.id);
+  dRm_(delta, 'Links', p.id);
+  return { delta: delta };
+}
+
+function saveSignature_(p) {
+  var g = p.signature || {};
+  var delta = newDelta_();
+  var name = String(g.name || '').trim();
+  if (!name) throw new Error('Signature name is required');
+  var patch = { name: name, html: g.html || '', image_url: String(g.image_url || '').trim(), is_default: !!g.is_default, updated_at: nowIso_() };
+  if (!getAll_('Signatures').length) patch.is_default = true;
+  var row;
+  if (g.id && byId_('Signatures', g.id)) row = update_('Signatures', g.id, patch);
+  else { patch.id = g.id; row = insert_('Signatures', patch); }
+  dUp_(delta, 'Signatures', row);
+  if (row.is_default) {
+    where_('Signatures', function (o) { return o.is_default && o.id !== row.id; }).forEach(function (o) {
+      dUp_(delta, 'Signatures', update_('Signatures', o.id, { is_default: false }));
+    });
+  }
+  return { delta: delta, id: row.id };
+}
+
+function deleteSignature_(p) {
+  var delta = newDelta_();
+  var gone = byId_('Signatures', p.id);
+  if (!gone) return { delta: delta };
+  where_('Copies', function (c) { return c.signature_id === p.id; }).forEach(function (c) {
+    dUp_(delta, 'Copies', update_('Copies', c.id, { signature_id: '' }));
+  });
+  remove_('Signatures', p.id);
+  dRm_(delta, 'Signatures', p.id);
+  if (gone.is_default) {
+    var next = getAll_('Signatures')[0];
+    if (next) dUp_(delta, 'Signatures', update_('Signatures', next.id, { is_default: true }));
+  }
   return { delta: delta };
 }
 
@@ -1122,6 +1520,14 @@ var ACTIONS = {
   planBatches: { fn: function (p) { return planBatches_(p.company_ids || [], p.start, p.time, p.spacing, !!p.dry_run); }, write: true },
   getCalendar: { fn: getCalendar_ },
   getSettings: { fn: function () { return { settings: settings_(), sheet_url: sheetUrl_() }; } },
+  listLinks: { fn: function () { return { links: rows_('Links') }; } },
+  saveLink: { fn: saveLink_, write: true },
+  deleteLink: { fn: deleteLink_, write: true },
+  listSignatures: { fn: function () { return { signatures: rows_('Signatures') }; } },
+  saveSignature: { fn: saveSignature_, write: true },
+  deleteSignature: { fn: deleteSignature_, write: true },
+  markCompanyReplied: { fn: function (p) { return markCompanyReplied_(p.company_id, p.contact_id, p.who); }, write: true },
+  resumeCompany: { fn: function (p) { return resumeCompany_(p.company_id); }, write: true },
   saveSettings: { fn: saveSettings_, write: true },
   addRole: { fn: addRole_, write: true }
 };
@@ -1129,28 +1535,23 @@ var ACTIONS = {
 // ---------- one-time setup (run from the Apps Script editor) ----------
 
 function setup() {
-  var ss = ss_();
-  Object.keys(SCHEMA).forEach(function (name) {
-    var sh = ss.getSheetByName(name) || ss.insertSheet(name);
-    var cols = SCHEMA[name];
-    if (sh.getMaxColumns() < cols.length) sh.insertColumnsAfter(sh.getMaxColumns(), cols.length - sh.getMaxColumns());
-    sh.getRange(1, 1, sh.getMaxRows(), cols.length).setNumberFormat('@');
-    sh.getRange(1, 1, 1, cols.length).setValues([cols]).setFontWeight('bold');
-    sh.setFrozenRows(1);
-  });
-  var blank = ss.getSheetByName('Sheet1');
-  if (blank && ss.getSheets().length > 1 && blank.getLastRow() === 0) ss.deleteSheet(blank);
+  CACHE_ = {};
+  migrateSchema_();
+  var blank = ss_().getSheetByName('Sheet1');
+  if (blank && ss_().getSheets().length > 1 && blank.getLastRow() === 0) ss_().deleteSheet(blank);
 
   CACHE_ = {};
   if (!getAll_('Roles').length) SEED_ROLES.forEach(function (r) { insert_('Roles', { role: r }); });
   var have = {};
   getAll_('Settings').forEach(function (r) { have[r.key] = true; });
   Object.keys(DEFAULT_SETTINGS).forEach(function (k) { if (!have[k]) saveSetting_(k, DEFAULT_SETTINGS[k]); });
+  migrateContent_();
+  PropertiesService.getScriptProperties().setProperty('SCHEMA_VERSION', SCHEMA_VERSION);
 
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (t.getHandlerFunction() === 'runTrigger') ScriptApp.deleteTrigger(t);
   });
   ScriptApp.newTrigger('runTrigger').timeBased().everyMinutes(10).create();
-  console.log('Setup complete. Trigger installed (every 10 minutes). Test mode is ON.');
+  console.log('Setup complete. Trigger installed (every 10 minutes). Existing data was kept.');
 }
 

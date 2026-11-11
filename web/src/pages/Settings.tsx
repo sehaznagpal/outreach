@@ -2,7 +2,6 @@ import { useRef, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { call, getApiUrl, getToken, hasEnvUrl, setApiUrl, setToken } from '../api';
 import { iconProps, SavedHint, Switch } from '../components/ui';
-import { iframeDoc } from '../lib/render';
 import { useStore } from '../store';
 import type { Settings } from '../types';
 
@@ -54,7 +53,7 @@ export function SettingsPage() {
       <div className="page-head">
         <div>
           <h1 className="page-title">Settings</h1>
-          <p className="page-sub">Sending rules, signature and connection.</p>
+          <p className="page-sub">Sending rules and connection.</p>
         </div>
         <SavedHint show={!dirty && !!savedAt} />
       </div>
@@ -134,23 +133,11 @@ export function SettingsPage() {
               <div className="col">
                 <div className="field"><label htmlFor="sender">Sender name</label>
                   <input id="sender" className="input" value={draft.sender_name} onChange={(e) => set('sender_name', e.target.value)} /></div>
-                <div className="field"><label htmlFor="portfolio">Portfolio URL</label>
-                  <input id="portfolio" className="input" value={draft.portfolio_url} onChange={(e) => set('portfolio_url', e.target.value)} placeholder="https://" /></div>
                 <div className="field"><label htmlFor="goal">Weekly goal (companies added)</label>
                   <input id="goal" className="input tnum" type="number" min={1} value={draft.weekly_goal_companies} onChange={(e) => set('weekly_goal_companies', Number(e.target.value))} /></div>
               </div>
             </section>
 
-            <section className="card" style={{ gridColumn: '1 / -1' }}>
-              <h2>Signature</h2>
-              <div className="field-row" style={{ alignItems: 'start' }}>
-                <div className="field"><label htmlFor="sig">HTML</label>
-                  <textarea id="sig" className="textarea" style={{ minHeight: 200, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 13 }}
-                    value={draft.signature_html} onChange={(e) => set('signature_html', e.target.value)} placeholder="<div>Sehaz<br>…</div>" /></div>
-                <div className="field"><label>Preview</label>
-                  <iframe title="Signature preview" className="email-frame" sandbox="" srcDoc={iframeDoc(draft.signature_html || '<span style="opacity:.5">No signature yet.</span>')} style={{ height: 200 }} /></div>
-              </div>
-            </section>
           </>
         ) : null}
       </div>

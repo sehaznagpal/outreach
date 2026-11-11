@@ -1,4 +1,4 @@
-export type CompanyStatus = 'active' | 'paused' | 'done';
+export type CompanyStatus = 'active' | 'paused' | 'done' | 'replied';
 export type ContactStatus = 'draft' | 'ready' | 'scheduled' | 'sent' | 'followed_up' | 'replied' | 'bounced' | 'stopped';
 export type BatchStatus = 'planned' | 'sending' | 'sent' | 'cancelled' | 'partial';
 
@@ -20,6 +20,8 @@ export interface Company {
   max_followups: number | null;
   status: CompanyStatus;
   created_at: string;
+  replied_at: string;
+  replied_by: string;
 }
 
 export interface Contact {
@@ -59,7 +61,8 @@ export interface Copy {
   body_html: string;
   uses_vars: string;
   image_url: string;
-  include_signature: boolean;
+  signature_id: string;
+  auto_link: boolean;
   archived: boolean;
   updated_at: string;
 }
@@ -73,6 +76,29 @@ export interface Batch {
   contact_ids: string;
   sent_at: string;
   created_at: string;
+  reason: string;
+}
+
+export interface Link {
+  id: string;
+  label: string;
+  url: string;
+  key: string;
+  auto_words: string;
+  is_primary: boolean;
+  scope: 'global' | 'company' | 'contact';
+  company_id: string;
+  contact_id: string;
+  created_at: string;
+}
+
+export interface Signature {
+  id: string;
+  name: string;
+  html: string;
+  image_url: string;
+  is_default: boolean;
+  updated_at: string;
 }
 
 export interface SendLogRow {
@@ -96,9 +122,7 @@ export interface Settings {
   default_send_time: string;
   followup_after_days: number;
   max_followups: number;
-  signature_html: string;
   sender_name: string;
-  portfolio_url: string;
   test_mode: boolean;
   test_email: string;
   paused: boolean;
@@ -119,12 +143,14 @@ export interface Data {
   contacts: Contact[];
   lines: Line[];
   copies: Copy[];
+  links: Link[];
+  signatures: Signature[];
   batches: Batch[];
   sendlog: SendLogRow[];
   meta: Meta;
 }
 
-export type Table = 'Companies' | 'Contacts' | 'Lines' | 'Copies' | 'Batches' | 'SendLog';
+export type Table = 'Companies' | 'Contacts' | 'Lines' | 'Copies' | 'Batches' | 'SendLog' | 'Links' | 'Signatures';
 
 export interface Delta {
   upsert?: Partial<Record<Table, any[]>>;
@@ -136,6 +162,7 @@ export interface Rendered {
   html: string;
   plain: string;
   missing: string[];
+  links_used?: Array<{ key: string; label: string; url: string; level: 'global' | 'company' | 'contact' }>;
   to?: string;
   copy_id?: string;
 }

@@ -37,11 +37,12 @@ One-time setup (about 15 minutes). Test mode is on by default, so nothing goes t
 9. Deploy `web/` to Vercel (framework: Vite, root directory: `web`). Add `VITE_API_URL` as an environment variable.
 
 ## Before sending for real
-- Settings → set a test email, write your signature, then try **Send test to me** on a company page.
+- Settings → set a test email; in Content → Signatures write your signature; then try **Send test to me** on a company page.
 - Leave test mode on and mark a few people ready. Batches send to your test address only (once each) so you can check timing.
 - Turn test mode off when you are happy.
 
 ## Notes
 - Emails go out around the scheduled time, within about ten minutes.
+- After updating the backend code, paste `paste/Code.gs` over the old code, then run `setup` once (it keeps your data) and redeploy with Deploy → Manage deployments → pencil → New version.
 - Test sends are logged in SendLog as `test` and never count toward the daily cap or the stats.
 - Email images: put files in `web/public/email/` and paste the full Vercel URL in the copy's Image URL field.

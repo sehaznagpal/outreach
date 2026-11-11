@@ -118,8 +118,8 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
   );
 }
 
-export function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
-  return <button type="button" role="switch" aria-checked={checked} aria-label={label} className="switch" onClick={() => onChange(!checked)} />;
+export function Switch({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
+  return <button type="button" role="switch" aria-checked={checked} aria-label={label} className="switch" disabled={disabled} style={disabled ? { opacity: 0.4, cursor: 'default' } : undefined} onClick={() => onChange(!checked)} />;
 }
 
 export function Seg<T extends string>({ value, options, onChange, label }: { value: T; options: Array<{ value: T; label: string }>; onChange: (v: T) => void; label: string }) {
@@ -148,7 +148,7 @@ export function StatusPill({ status }: { status: ContactStatus }) {
   return <span className="pill"><span className={`dot ${tone}`} />{label}</span>;
 }
 export function CompanyStatusPill({ status }: { status: CompanyStatus }) {
-  const tone = status === 'active' ? 'ok' : status === 'paused' ? 'ember' : '';
+  const tone = status === 'active' ? 'ok' : status === 'paused' ? 'ember' : status === 'replied' ? 'sky' : '';
   return <span className="pill"><span className={`dot ${tone}`} />{status[0].toUpperCase() + status.slice(1)}</span>;
 }
 export function BatchStatusPill({ status }: { status: BatchStatus }) {
@@ -192,9 +192,12 @@ export function Ring({ value, max, size = 92 }: { value: number; max: number; si
 
 export interface RichHandle { insert: (text: string) => void; focus: () => void }
 
-export const RichText = forwardRef<RichHandle, { value: string; onChange: (html: string) => void; onFocus?: () => void; placeholder?: string }>(
-  function RichText({ value, onChange, onFocus, placeholder }, ref) {
+export const RichText = forwardRef<RichHandle, { value: string; onChange: (html: string) => void; onFocus?: () => void; placeholder?: string; links?: Array<{ key: string; label: string }> }>(
+  function RichText({ value, onChange, onFocus, placeholder, links }, ref) {
     const el = useRef<HTMLDivElement>(null);
+    const saved = useRef<Range | null>(null);
+    const menuBtn = useRef<HTMLButtonElement>(null);
+    const [menu, setMenu] = useState(false);
     useEffect(() => {
       if (el.current && el.current.innerHTML !== value) el.current.innerHTML = value;
     }, [value]);
@@ -216,6 +219,18 @@ export const RichText = forwardRef<RichHandle, { value: string; onChange: (html:
         onChange(node.innerHTML);
       },
     }));
+    const pickLink = (key: string) => {
+      setMenu(false);
+      const node = el.current;
+      if (!node) return;
+      node.focus();
+      const sel = window.getSelection();
+      const range = saved.current;
+      if (range && sel) { sel.removeAllRanges(); sel.addRange(range); }
+      if (range && !range.collapsed) document.execCommand('createLink', false, `link:${key}`);
+      else document.execCommand('insertText', false, `{{link:${key}}}`);
+      onChange(node.innerHTML);
+    };
     const cmd = (c: string, arg?: string) => {
       el.current?.focus();
       document.execCommand(c, false, arg);
@@ -231,6 +246,21 @@ export const RichText = forwardRef<RichHandle, { value: string; onChange: (html:
             const url = window.prompt('Link URL');
             if (url) cmd('createLink', url);
           }}><Link2 {...ICON} /></button>
+          {links && links.length > 0 && (
+            <>
+              <button ref={menuBtn} type="button" className="btn sm ghost" onMouseDown={(e) => {
+                e.preventDefault();
+                const sel = window.getSelection();
+                saved.current = sel && sel.rangeCount && el.current?.contains(sel.anchorNode) ? sel.getRangeAt(0).cloneRange() : null;
+                setMenu((m) => !m);
+              }}>Link to <ChevronDown size={14} strokeWidth={1.5} /></button>
+              {menu && (
+                <Popover anchor={menuBtn.current} onClose={() => setMenu(false)}>
+                  {links.map((l) => <button key={l.key} type="button" className="opt" onClick={() => pickLink(l.key)}><span>{l.label}</span><span className="hint">{`{{link:${l.key}}}`}</span></button>)}
+                </Popover>
+              )}
+            </>
+          )}
         </div>
         <div ref={el} className="editor" contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true" aria-label="Email body"
           data-ph={placeholder} onFocus={onFocus} onInput={() => el.current && onChange(el.current.innerHTML)}

@@ -52,6 +52,7 @@ function sheetUrl_() {
 // ---------- read actions ----------
 
 function bootstrap_() {
+  ensureMigrated_();
   var since = isoFromDate_(new Date(Date.now() - 120 * 86400000));
   var raw = rawSettings_();
   return {
@@ -61,6 +62,8 @@ function bootstrap_() {
     contacts: rows_('Contacts'),
     lines: rows_('Lines'),
     copies: rows_('Copies'),
+    links: rows_('Links'),
+    signatures: rows_('Signatures'),
     batches: rows_('Batches', function (b) { return b.status === 'planned' || b.scheduled_at >= since; }),
     sendlog: rows_('SendLog', function (r) { return r.sent_at >= since; }),
     meta: {
@@ -143,6 +146,7 @@ function saveCompany_(p) {
     if (c[f] === undefined) return;
     patch[f] = (f === 'copy_ids' || f === 'followup_copy_ids') ? csvOf_(c[f]) : c[f];
   });
+  if (patch.status === 'replied') throw new Error('Use Mark as replied for that.');
   var delta = newDelta_();
   var row;
   if (c.id) {
@@ -153,7 +157,7 @@ function saveCompany_(p) {
       name: patch.name, industry: patch.industry || '', domain: patch.domain || '', website: patch.website || '',
       opening_title: '', opening_url: '', pitch_page_url: '', email_pattern: '', notes: '',
       copy_ids: '', followup_copy_ids: '', batch_size: 4, followup_after_days: null, max_followups: null,
-      status: 'active', created_at: nowIso_()
+      status: 'active', created_at: nowIso_(), replied_at: '', replied_by: ''
     });
     row = update_('Companies', row.id, patch);
   }
@@ -166,8 +170,9 @@ function deleteCompany_(p) {
   where_('Contacts', function (c) { return c.company_id === p.id; }).slice().forEach(function (c) { dRm_(delta, 'Contacts', c.id); });
   where_('Lines', function (l) { return l.company_id === p.id; }).slice().forEach(function (l) { dRm_(delta, 'Lines', l.id); });
   where_('Batches', function (b) { return b.company_id === p.id; }).slice().forEach(function (b) { dRm_(delta, 'Batches', b.id); });
+  where_('Links', function (l) { return l.company_id === p.id; }).slice().forEach(function (l) { dRm_(delta, 'Links', l.id); });
   // delete bottom-up so row numbers stay valid
-  ['Contacts', 'Lines', 'Batches'].forEach(function (name) {
+  ['Contacts', 'Lines', 'Batches', 'Links'].forEach(function (name) {
     var ids = (delta.remove[name] || []).slice();
     ids.forEach(function (id) { remove_(name, id); });
   });
@@ -223,6 +228,7 @@ function removeContact_(p) {
   if (c.batch_id) {
     dropContactFromBatch_(c.batch_id, c.id, delta);
   }
+  where_('Links', function (l) { return l.contact_id === c.id; }).slice().forEach(function (l) { remove_('Links', l.id); dRm_(delta, 'Links', l.id); });
   remove_('Contacts', c.id);
   dRm_(delta, 'Contacts', c.id);
   return { delta: delta };
@@ -252,7 +258,7 @@ function saveCopy_(p) {
   var patch = {
     name: c.name, kind: c.kind === 'followup' ? 'followup' : 'first', tags: csvOf_(c.tags),
     subject: c.subject || '', body_html: body, image_url: c.image_url || '',
-    include_signature: !!c.include_signature, updated_at: nowIso_()
+    signature_id: c.signature_id || '', auto_link: c.auto_link !== false, updated_at: nowIso_()
   };
   patch.uses_vars = usedVars_(patch.subject).concat(usedVars_(body)).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(',');
   var row;
@@ -270,6 +276,83 @@ function saveCopy_(p) {
 function archiveCopy_(p) {
   var delta = newDelta_();
   dUp_(delta, 'Copies', update_('Copies', p.id, { archived: p.archived !== false, updated_at: nowIso_() }));
+  return { delta: delta };
+}
+
+function saveLink_(p) {
+  var l = p.link || {};
+  var delta = newDelta_();
+  var scope = l.scope === 'company' || l.scope === 'contact' ? l.scope : 'global';
+  var label = String(l.label || '').trim();
+  if (!label) throw new Error('Label is required');
+  var key = slug_(l.key || label);
+  if (!key) throw new Error('Key is required');
+  var companyId = scope === 'global' ? '' : String(l.company_id || '');
+  var contactId = scope === 'contact' ? String(l.contact_id || '') : '';
+  if (scope === 'contact' && !companyId) {
+    var owner = byId_('Contacts', contactId);
+    companyId = owner ? owner.company_id : '';
+  }
+  var dup = where_('Links', function (o) {
+    return o.id !== l.id && o.key === key && o.scope === scope && o.company_id === companyId && o.contact_id === contactId;
+  })[0];
+  if (dup) throw new Error('Another link already uses the key "' + key + '".');
+  var patch = {
+    label: label, url: String(l.url || '').trim(), key: key,
+    auto_words: csv_(Array.isArray(l.auto_words) ? l.auto_words.join(',') : l.auto_words).join(', '),
+    is_primary: scope === 'global' && !!l.is_primary, scope: scope, company_id: companyId, contact_id: contactId
+  };
+  var row;
+  if (l.id && byId_('Links', l.id)) row = update_('Links', l.id, patch);
+  else { patch.id = l.id; patch.created_at = nowIso_(); row = insert_('Links', patch); }
+  dUp_(delta, 'Links', row);
+  if (patch.is_primary) {
+    where_('Links', function (o) { return o.scope === 'global' && o.is_primary && o.id !== row.id; }).forEach(function (o) {
+      dUp_(delta, 'Links', update_('Links', o.id, { is_primary: false }));
+    });
+  }
+  return { delta: delta, id: row.id };
+}
+
+function deleteLink_(p) {
+  var delta = newDelta_();
+  remove_('Links', p.id);
+  dRm_(delta, 'Links', p.id);
+  return { delta: delta };
+}
+
+function saveSignature_(p) {
+  var g = p.signature || {};
+  var delta = newDelta_();
+  var name = String(g.name || '').trim();
+  if (!name) throw new Error('Signature name is required');
+  var patch = { name: name, html: g.html || '', image_url: String(g.image_url || '').trim(), is_default: !!g.is_default, updated_at: nowIso_() };
+  if (!getAll_('Signatures').length) patch.is_default = true;
+  var row;
+  if (g.id && byId_('Signatures', g.id)) row = update_('Signatures', g.id, patch);
+  else { patch.id = g.id; row = insert_('Signatures', patch); }
+  dUp_(delta, 'Signatures', row);
+  if (row.is_default) {
+    where_('Signatures', function (o) { return o.is_default && o.id !== row.id; }).forEach(function (o) {
+      dUp_(delta, 'Signatures', update_('Signatures', o.id, { is_default: false }));
+    });
+  }
+  return { delta: delta, id: row.id };
+}
+
+function deleteSignature_(p) {
+  var delta = newDelta_();
+  var gone = byId_('Signatures', p.id);
+  if (!gone) return { delta: delta };
+  where_('Copies', function (c) { return c.signature_id === p.id; }).forEach(function (c) {
+    dUp_(delta, 'Copies', update_('Copies', c.id, { signature_id: '' }));
+  });
+  remove_('Signatures', p.id);
+  dRm_(delta, 'Signatures', p.id);
+  if (gone.is_default) {
+    var next = getAll_('Signatures')[0];
+    if (next) dUp_(delta, 'Signatures', update_('Signatures', next.id, { is_default: true }));
+  }
   return { delta: delta };
 }
 
@@ -311,6 +394,14 @@ var ACTIONS = {
   planBatches: { fn: function (p) { return planBatches_(p.company_ids || [], p.start, p.time, p.spacing, !!p.dry_run); }, write: true },
   getCalendar: { fn: getCalendar_ },
   getSettings: { fn: function () { return { settings: settings_(), sheet_url: sheetUrl_() }; } },
+  listLinks: { fn: function () { return { links: rows_('Links') }; } },
+  saveLink: { fn: saveLink_, write: true },
+  deleteLink: { fn: deleteLink_, write: true },
+  listSignatures: { fn: function () { return { signatures: rows_('Signatures') }; } },
+  saveSignature: { fn: saveSignature_, write: true },
+  deleteSignature: { fn: deleteSignature_, write: true },
+  markCompanyReplied: { fn: function (p) { return markCompanyReplied_(p.company_id, p.contact_id, p.who); }, write: true },
+  resumeCompany: { fn: function (p) { return resumeCompany_(p.company_id); }, write: true },
   saveSettings: { fn: saveSettings_, write: true },
   addRole: { fn: addRole_, write: true }
 };
@@ -318,27 +409,22 @@ var ACTIONS = {
 // ---------- one-time setup (run from the Apps Script editor) ----------
 
 function setup() {
-  var ss = ss_();
-  Object.keys(SCHEMA).forEach(function (name) {
-    var sh = ss.getSheetByName(name) || ss.insertSheet(name);
-    var cols = SCHEMA[name];
-    if (sh.getMaxColumns() < cols.length) sh.insertColumnsAfter(sh.getMaxColumns(), cols.length - sh.getMaxColumns());
-    sh.getRange(1, 1, sh.getMaxRows(), cols.length).setNumberFormat('@');
-    sh.getRange(1, 1, 1, cols.length).setValues([cols]).setFontWeight('bold');
-    sh.setFrozenRows(1);
-  });
-  var blank = ss.getSheetByName('Sheet1');
-  if (blank && ss.getSheets().length > 1 && blank.getLastRow() === 0) ss.deleteSheet(blank);
+  CACHE_ = {};
+  migrateSchema_();
+  var blank = ss_().getSheetByName('Sheet1');
+  if (blank && ss_().getSheets().length > 1 && blank.getLastRow() === 0) ss_().deleteSheet(blank);
 
   CACHE_ = {};
   if (!getAll_('Roles').length) SEED_ROLES.forEach(function (r) { insert_('Roles', { role: r }); });
   var have = {};
   getAll_('Settings').forEach(function (r) { have[r.key] = true; });
   Object.keys(DEFAULT_SETTINGS).forEach(function (k) { if (!have[k]) saveSetting_(k, DEFAULT_SETTINGS[k]); });
+  migrateContent_();
+  PropertiesService.getScriptProperties().setProperty('SCHEMA_VERSION', SCHEMA_VERSION);
 
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (t.getHandlerFunction() === 'runTrigger') ScriptApp.deleteTrigger(t);
   });
   ScriptApp.newTrigger('runTrigger').timeBased().everyMinutes(10).create();
-  console.log('Setup complete. Trigger installed (every 10 minutes). Test mode is ON.');
+  console.log('Setup complete. Trigger installed (every 10 minutes). Existing data was kept.');
 }

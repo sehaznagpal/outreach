@@ -41,7 +41,7 @@ export function Companies({ onNew }: { onNew: () => void }) {
       <div className="toolbar">
         <input id="company-search" className="input" placeholder="Search companies  ( / )" aria-label="Search companies" value={q} onChange={(e) => setQ(e.target.value)} />
         <select className="select" aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value as 'all' | CompanyStatus)}>
-          <option value="all">All statuses</option><option value="active">Active</option><option value="paused">Paused</option><option value="done">Done</option>
+          <option value="all">All statuses</option><option value="active">Active</option><option value="paused">Paused</option><option value="done">Done</option><option value="replied">Replied</option>
         </select>
         <select className="select" aria-label="Industry" value={industry} onChange={(e) => setIndustry(e.target.value)}>
           <option value="all">All industries</option>{industries.map((i) => <option key={i} value={i}>{i}</option>)}
