@@ -84,15 +84,22 @@ function fromCell_(col, v) {
 
 // ---------- spreadsheet access ----------
 
+var SS_ = null;
+var SHEETS_ = {};
+
 function ss_() {
+  if (SS_) return SS_;
   var id = PropertiesService.getScriptProperties().getProperty('SHEET_ID');
   if (!id) throw new Error('SHEET_ID is not set in Script Properties');
-  return SpreadsheetApp.openById(id);
+  SS_ = SpreadsheetApp.openById(id);
+  return SS_;
 }
 
 function sheet_(name) {
+  if (SHEETS_[name]) return SHEETS_[name];
   var sh = ss_().getSheetByName(name);
   if (!sh) throw new Error('Missing tab "' + name + '". Run setup() once from the Apps Script editor.');
+  SHEETS_[name] = sh;
   return sh;
 }
 
@@ -245,6 +252,7 @@ function transformCopy_(o) {
 
 /** Creates missing tabs and rewrites any tab whose header differs from SCHEMA, keeping data. */
 function migrateSchema_() {
+  SHEETS_ = {};
   var ss = ss_();
   Object.keys(SCHEMA).forEach(function (name) {
     var cols = SCHEMA[name];
@@ -271,6 +279,7 @@ function migrateSchema_() {
     if (out.length) sh.getRange(2, 1, out.length, cols.length).setValues(out);
   });
   CACHE_ = {};
+  SHEETS_ = {};
 }
 
 /** Seeds the three links and moves the old Settings signature / portfolio into Content. */

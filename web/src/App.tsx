@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { CalendarDays, Building2, ChevronLeft, ChevronRight, LayoutDashboard, ListChecks, Plus, Settings as Cog, Mail } from 'lucide-react';
 import { useStore } from './store';
 import { iconProps, Modal } from './components/ui';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { Dashboard } from './pages/Dashboard';
 import { Companies } from './pages/Companies';
 import { CompanyPage } from './pages/CompanyPage';
@@ -85,6 +86,7 @@ function Rail({ collapsed, setCollapsed, onNew }: { collapsed: boolean; setColla
 export default function App() {
   const { status, error, reload, toasts, data } = useStore();
   const nav = useNavigate();
+  const loc = useLocation();
   const [newOpen, setNewOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem('outreach.rail') === '1'; } catch { return false; } });
   useEffect(() => { try { localStorage.setItem('outreach.rail', collapsed ? '1' : '0'); } catch { /* ignore */ } }, [collapsed]);
@@ -121,6 +123,7 @@ export default function App() {
           )}
           {gated && <SettingsPage />}
           {status === 'ready' && (
+            <ErrorBoundary key={loc.pathname}>
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/companies" element={<Companies onNew={() => setNewOpen(true)} />} />
@@ -132,6 +135,7 @@ export default function App() {
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+            </ErrorBoundary>
           )}
         </div>
       </main>

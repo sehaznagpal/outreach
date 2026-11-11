@@ -26,6 +26,14 @@ export const applyDelta = (d: Data, delta?: Delta): Data => {
   return next;
 };
 
+const CACHE_KEY = 'outreach.cache.v1';
+/** Older backends may not send newer tables yet; never let a missing one crash a page. */
+const norm = (d: Data): Data => ({ ...d, links: d.links || [], signatures: d.signatures || [], copies: d.copies || [] });
+const readCache = (): Data | null => {
+  try { const s = localStorage.getItem(CACHE_KEY); return s ? norm(JSON.parse(s)) : null; } catch { return null; }
+};
+const writeCache = (d: Data) => { try { localStorage.setItem(CACHE_KEY, JSON.stringify(d)); } catch { /* ignore */ } };
+
 export interface Toast { id: number; kind: 'ok' | 'error'; text: string }
 type Status = 'loading' | 'ready' | 'error' | 'unconfigured';
 
@@ -46,8 +54,10 @@ interface Store {
 const Ctx = createContext<Store | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [data, setData] = useState<Data | null>(null);
-  const [status, setStatus] = useState<Status>(isConfigured() ? 'loading' : 'unconfigured');
+  // show the last-known data instantly, then refresh in the background
+  const [initial] = useState<Data | null>(() => (isConfigured() ? readCache() : null));
+  const [data, setData] = useState<Data | null>(initial);
+  const [status, setStatus] = useState<Status>(!isConfigured() ? 'unconfigured' : initial ? 'ready' : 'loading');
   const [error, setError] = useState('');
   const [pending, setPending] = useState(0);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -64,7 +74,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!isConfigured()) { setStatus('unconfigured'); return; }
     if (!quiet) setStatus('loading');
     try {
-      const d = await call<Data>('bootstrap');
+      const d = norm(await call<Data>('bootstrap'));
       setData(d);
       setStatus('ready');
       setError('');
@@ -72,11 +82,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const err = e as ApiError;
       if (quiet) { toast('error', err.message); return; }
       setError(err.message);
+      if (err.unauthorized) { try { localStorage.removeItem(CACHE_KEY); } catch { /* ignore */ } }
       setStatus(err.unauthorized ? 'unconfigured' : 'error');
     }
   }, [toast]);
 
-  useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => { void reload(!!initial); }, [reload]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!data) return;
+    const t = setTimeout(() => writeCache(data), 1000);
+    return () => clearTimeout(t);
+  }, [data]);
 
   const patch = useCallback((fn: (d: Data) => Data) => setData((d) => (d ? fn(d) : d)), []);
 
