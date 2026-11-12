@@ -9,7 +9,7 @@ var TZ = 'Asia/Kolkata';
 
 var SCHEMA = {
   Companies: ['id', 'name', 'industry', 'domain', 'website', 'opening_title', 'opening_url', 'pitch_page_url', 'email_pattern', 'notes', 'copy_ids', 'followup_copy_ids', 'batch_size', 'followup_after_days', 'max_followups', 'status', 'created_at', 'replied_at', 'replied_by'],
-  Contacts: ['id', 'company_id', 'name', 'first_name', 'role', 'email', 'linkedin_url', 'line_override', 'copy_override_id', 'status', 'assigned_line', 'assigned_copy_id', 'batch_id', 'thread_id', 'first_sent_at', 'last_sent_at', 'followups_sent', 'replied_at', 'created_at'],
+  Contacts: ['id', 'company_id', 'name', 'first_name', 'role', 'email', 'linkedin_url', 'line_override', 'copy_override_id', 'status', 'assigned_line', 'assigned_copy_id', 'batch_id', 'thread_id', 'first_sent_at', 'last_sent_at', 'followups_sent', 'replied_at', 'created_at', 'type'],
   Lines: ['id', 'company_id', 'text'],
   Copies: ['id', 'name', 'kind', 'tags', 'subject', 'body_html', 'uses_vars', 'image_url', 'signature_id', 'auto_link', 'archived', 'updated_at'],
   Batches: ['id', 'company_id', 'type', 'scheduled_at', 'status', 'contact_ids', 'sent_at', 'created_at', 'reason'],
@@ -242,7 +242,7 @@ function fresh_(name, id) {
 
 // ---------- schema + content migration ----------
 
-var SCHEMA_VERSION = '2';
+var SCHEMA_VERSION = '3';
 
 function transformCopy_(o) {
   if (o.include_signature !== undefined) {
@@ -673,8 +673,8 @@ function setReady_(ids, ready) {
       return;
     }
 
-    if (c.status !== 'draft') return;
     if (company.status === 'replied') { errors.push({ contact_id: c.id, message: 'This company replied. Outreach is stopped.' }); return; }
+    if (c.status !== 'draft') return;
     if (!c.email) { errors.push({ contact_id: c.id, message: 'No email address.' }); return; }
     var copyId = assignCopyId_(c, company);
     if (!copyId) { errors.push({ contact_id: c.id, message: 'Pick at least one copy for this company first.' }); return; }
@@ -1316,7 +1316,7 @@ function deleteCompany_(p) {
   return { delta: delta };
 }
 
-var CONTACT_FIELDS = ['name', 'first_name', 'role', 'email', 'linkedin_url', 'line_override', 'copy_override_id'];
+var CONTACT_FIELDS = ['name', 'first_name', 'role', 'email', 'linkedin_url', 'line_override', 'copy_override_id', 'type'];
 
 function saveContacts_(p) {
   var delta = newDelta_();
@@ -1331,10 +1331,18 @@ function saveContacts_(p) {
       var dup = where_('Contacts', function (o) { return o.id !== c.id && String(o.email).toLowerCase() === patch.email; })[0];
       if (dup) warnings.push({ email: patch.email, message: 'Already exists in the database.' });
     }
-    if (patch.name !== undefined && c.first_name === undefined) patch.first_name = patch.name.split(/\s+/)[0] || '';
+    if (patch.type !== undefined) patch.type = patch.type === 'company' ? 'company' : 'person';
+    var existing = c.id ? byId_('Contacts', c.id) : null;
+    var isCompanyInbox = (patch.type || (existing && existing.type)) === 'company';
+    if (isCompanyInbox) {
+      // a company inbox (careers@, info@) is greeted as "team"
+      if (c.first_name === undefined && !(existing && existing.first_name)) patch.first_name = 'team';
+    } else if (patch.name !== undefined && c.first_name === undefined) {
+      patch.first_name = patch.name.split(/\s+/)[0] || '';
+    }
 
     var row;
-    if (c.id && byId_('Contacts', c.id)) {
+    if (existing) {
       row = update_('Contacts', c.id, patch);
       if (row.status === 'ready' || row.status === 'scheduled') {
         var re = {};
@@ -1348,7 +1356,8 @@ function saveContacts_(p) {
         id: c.id, company_id: p.company_id, name: patch.name, first_name: patch.first_name || '', role: patch.role || '',
         email: patch.email || '', linkedin_url: patch.linkedin_url || '', line_override: patch.line_override || '',
         copy_override_id: patch.copy_override_id || '', status: 'draft', assigned_line: '', assigned_copy_id: '',
-        batch_id: '', thread_id: '', first_sent_at: '', last_sent_at: '', followups_sent: 0, replied_at: '', created_at: nowIso_()
+        batch_id: '', thread_id: '', first_sent_at: '', last_sent_at: '', followups_sent: 0, replied_at: '', created_at: nowIso_(),
+        type: patch.type === 'company' ? 'company' : 'person'
       });
     }
     dUp_(delta, 'Contacts', row);
@@ -1401,6 +1410,7 @@ function saveCopy_(p) {
   else {
     if (!patch.name) throw new Error('Copy name is required');
     patch.archived = false;
+    patch.id = c.id;
     row = insert_('Copies', patch);
   }
   var delta = newDelta_();

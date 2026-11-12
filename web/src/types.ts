@@ -44,6 +44,8 @@ export interface Contact {
   followups_sent: number | null;
   replied_at: string;
   created_at: string;
+  /** 'company' = a shared inbox such as careers@; blank or 'person' = a named person */
+  type: 'person' | 'company' | '';
 }
 
 export interface Line {

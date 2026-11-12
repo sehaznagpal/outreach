@@ -52,6 +52,8 @@ export function CompanyPage() {
 
   const contacts = d.contacts.filter((c) => c.company_id === company.id).sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0));
   const lines = d.lines.filter((l) => l.company_id === company.id);
+  const inboxes = contacts.filter((c) => c.type === 'company');
+  const people = contacts.filter((c) => c.type !== 'company');
 
   return (
     <>
@@ -85,8 +87,13 @@ export function CompanyPage() {
       <div className="co-layout">
         <div>
           <section>
-            <div className="section-head"><h2>People</h2><span className="small faint">{contacts.length}</span></div>
-            <PeopleTable company={company} contacts={contacts} />
+            <div className="section-head"><h2>Company emails</h2><span className="small faint">{inboxes.length}</span></div>
+            <p className="help" style={{ marginBottom: 10 }}>Shared addresses such as careers@ or info@. Greeted as "team".</p>
+            <PeopleTable company={company} contacts={inboxes} kind="company" />
+          </section>
+          <section className="section">
+            <div className="section-head"><h2>People</h2><span className="small faint">{people.length}</span></div>
+            <PeopleTable company={company} contacts={people} />
           </section>
           <LinesSection company={company} lines={lines} />
           <NotesSection company={company} onSave={(notes) => saveCompany({ notes })} saved={!!savedAt} />

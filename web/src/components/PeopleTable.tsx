@@ -26,7 +26,7 @@ export function suggestEmail(pattern: string, name: string, domain: string): str
 const blankContact = (company_id: string, f: Partial<Contact>): Contact => ({
   id: uid(), company_id, name: '', first_name: '', role: '', email: '', linkedin_url: '', line_override: '', copy_override_id: '',
   status: 'draft', assigned_line: '', assigned_copy_id: '', batch_id: '', thread_id: '', first_sent_at: '', last_sent_at: '',
-  followups_sent: 0, replied_at: '', created_at: '', ...f,
+  followups_sent: 0, replied_at: '', created_at: '', type: 'person', ...f,
 });
 
 const upsertContacts = (rows: Contact[]) => (d: Data): Data => {
@@ -62,7 +62,8 @@ function useContactActions(company: Company) {
 
 // ---------- table ----------
 
-export function PeopleTable({ company, contacts }: { company: Company; contacts: Contact[] }) {
+export function PeopleTable({ company, contacts, kind = 'person' }: { company: Company; contacts: Contact[]; kind?: 'person' | 'company' }) {
+  const inbox = kind === 'company';
   const d = useData();
   const { mutate } = useStore();
   const act = useContactActions(company);
@@ -81,8 +82,8 @@ export function PeopleTable({ company, contacts }: { company: Company; contacts:
         <div className="bulkbar" role="toolbar" aria-label="Bulk actions">
           <span className="small">{live.length} selected</span>
           <button className="btn sm" onClick={() => { act.setReady(live, true); setSel([]); }}>Mark ready</button>
-          <div style={{ width: 190 }}><Combo value="" options={roleOpts} placeholder="Change role" onAdd={addRole}
-            onChange={(v) => { if (v) { act.save(live.map((id) => ({ id, role: v })), contacts.filter((c) => live.includes(c.id)).map((c) => ({ ...c, role: v }))); setSel([]); } }} /></div>
+          {!inbox && <div style={{ width: 190 }}><Combo value="" options={roleOpts} placeholder="Change role" onAdd={addRole}
+            onChange={(v) => { if (v) { act.save(live.map((id) => ({ id, role: v })), contacts.filter((c) => live.includes(c.id)).map((c) => ({ ...c, role: v }))); setSel([]); } }} /></div>}
           <button className="btn sm danger" onClick={() => { if (window.confirm(`Remove ${live.length} ${live.length === 1 ? 'person' : 'people'}?`)) { act.remove(live); setSel([]); } }}>Remove</button>
           <span className="spacer" />
           <button className="btn sm ghost" onClick={() => setSel([])}>Clear</button>
@@ -91,26 +92,32 @@ export function PeopleTable({ company, contacts }: { company: Company; contacts:
 
       <div className="tbl-wrap">
         <table className="tbl people">
-          <colgroup><col style={{ width: 32 }} /><col style={{ width: 150 }} /><col style={{ width: 150 }} /><col style={{ width: 190 }} /><col style={{ width: 100 }} /><col style={{ width: 150 }} /><col style={{ width: 130 }} /><col style={{ width: 110 }} /><col style={{ width: 170 }} /><col style={{ width: 44 }} /></colgroup>
+          {inbox
+            ? <colgroup><col style={{ width: 32 }} /><col style={{ width: 170 }} /><col style={{ width: 230 }} /><col style={{ width: 150 }} /><col style={{ width: 130 }} /><col style={{ width: 110 }} /><col style={{ width: 170 }} /><col style={{ width: 44 }} /></colgroup>
+            : <colgroup><col style={{ width: 32 }} /><col style={{ width: 150 }} /><col style={{ width: 150 }} /><col style={{ width: 190 }} /><col style={{ width: 100 }} /><col style={{ width: 150 }} /><col style={{ width: 130 }} /><col style={{ width: 110 }} /><col style={{ width: 170 }} /><col style={{ width: 44 }} /></colgroup>}
           <thead>
             <tr>
               <th><input type="checkbox" className="checkbox" aria-label="Select all" checked={allSel} onChange={(e) => setSel(e.target.checked ? contacts.map((c) => c.id) : [])} /></th>
-              <th>Name</th><th>Role</th><th>Email</th><th>LinkedIn</th><th>Line</th><th>Copy</th><th>Status</th><th>Action</th><th />
+              {inbox
+                ? <><th>Label</th><th>Email</th><th>Line</th><th>Copy</th><th>Status</th><th>Action</th><th /></>
+                : <><th>Name</th><th>Role</th><th>Email</th><th>LinkedIn</th><th>Line</th><th>Copy</th><th>Status</th><th>Action</th><th /></>}
             </tr>
           </thead>
           <tbody>
             {contacts.map((c) => (
               <PersonRow key={c.id} c={c} company={company} d={d} act={act} lines={lines.map((l) => l.text)} roleOpts={roleOpts} addRole={addRole}
-                firstCopies={firstCopies} selected={sel.includes(c.id)} toggle={(on) => setSel(on ? [...sel, c.id] : sel.filter((x) => x !== c.id))} />
+                firstCopies={firstCopies} inbox={inbox} selected={sel.includes(c.id)} toggle={(on) => setSel(on ? [...sel, c.id] : sel.filter((x) => x !== c.id))} />
             ))}
-            <NewRow company={company} d={d} act={act} roleOpts={roleOpts} addRole={addRole} />
+            <NewRow company={company} d={d} act={act} roleOpts={roleOpts} addRole={addRole} inbox={inbox} />
           </tbody>
         </table>
       </div>
-      <div className="row" style={{ marginTop: 14 }}>
-        <button className="btn sm" onClick={() => setPasting(true)}>Paste list</button>
-        <span className="help">Name, Role, Email per line, or paste rows from a spreadsheet.</span>
-      </div>
+      {!inbox && (
+        <div className="row" style={{ marginTop: 14 }}>
+          <button className="btn sm" onClick={() => setPasting(true)}>Paste list</button>
+          <span className="help">Name, Role, Email per line, or paste rows from a spreadsheet.</span>
+        </div>
+      )}
       {pasting && <PasteModal company={company} d={d} act={act} addRole={addRole} onClose={() => setPasting(false)} />}
     </div>
   );
@@ -133,13 +140,13 @@ function TextCell({ value, onSave, placeholder, suggestion, label, type }: { val
   );
 }
 
-function PersonRow({ c, company, d, act, lines, roleOpts, addRole, firstCopies, selected, toggle }: {
+function PersonRow({ c, company, d, act, lines, roleOpts, addRole, firstCopies, selected, toggle, inbox }: {
   c: Contact; company: Company; d: Data; act: Act; lines: string[]; roleOpts: Array<{ value: string; label: string }>;
-  addRole: (r: string) => Promise<void>; firstCopies: Data['copies']; selected: boolean; toggle: (on: boolean) => void;
+  addRole: (r: string) => Promise<void>; firstCopies: Data['copies']; selected: boolean; toggle: (on: boolean) => void; inbox: boolean;
 }) {
   const batch = c.batch_id ? d.batches.find((b) => b.id === c.batch_id) : undefined;
   const copyName = d.copies.find((x) => x.id === c.assigned_copy_id)?.name;
-  const suggestion = !c.email ? suggestEmail(company.email_pattern, c.name, company.domain) : '';
+  const suggestion = !c.email && !inbox ? suggestEmail(company.email_pattern, c.name, company.domain) : '';
   const isReady = c.status === 'ready' || c.status === 'scheduled';
 
   let action: JSX.Element;
@@ -159,10 +166,10 @@ function PersonRow({ c, company, d, act, lines, roleOpts, addRole, firstCopies, 
   return (
     <tr className={selected ? 'selected' : ''}>
       <td><input type="checkbox" className="checkbox" aria-label={`Select ${c.name}`} checked={selected} onChange={(e) => toggle(e.target.checked)} /></td>
-      <td><TextCell label="Name" value={c.name} onSave={(v) => v && act.update(c, { name: v, first_name: v.split(/\s+/)[0] })} /></td>
-      <td><Combo bare ariaLabel={`Role for ${c.name}`} value={c.role} options={roleOpts} placeholder="Role" onAdd={addRole} addLabel="Add new role" onChange={(v) => act.update(c, { role: v })} /></td>
+      <td><TextCell label={inbox ? 'Label' : 'Name'} value={c.name} onSave={(v) => v && act.update(c, inbox ? { name: v } : { name: v, first_name: v.split(/\s+/)[0] })} /></td>
+      {!inbox && <td><Combo bare ariaLabel={`Role for ${c.name}`} value={c.role} options={roleOpts} placeholder="Role" onAdd={addRole} addLabel="Add new role" onChange={(v) => act.update(c, { role: v })} /></td>}
       <td><TextCell label="Email" type="email" value={c.email} suggestion={suggestion} placeholder="Email" onSave={(v) => act.update(c, { email: v.toLowerCase() })} /></td>
-      <td><TextCell label="LinkedIn" value={c.linkedin_url} placeholder="LinkedIn" onSave={(v) => act.update(c, { linkedin_url: v })} /></td>
+      {!inbox && <td><TextCell label="LinkedIn" value={c.linkedin_url} placeholder="LinkedIn" onSave={(v) => act.update(c, { linkedin_url: v })} /></td>}
       <td style={{ maxWidth: 200 }}><Combo bare ariaLabel={`Line for ${c.name}`} value={c.line_override} placeholder={c.assigned_line || 'Random'} clearLabel="Random"
         options={lines.map((l) => ({ value: l, label: l }))} onChange={(v) => act.update(c, { line_override: v })} /></td>
       <td style={{ maxWidth: 180 }}><Combo bare ariaLabel={`Copy for ${c.name}`} value={c.copy_override_id} placeholder={copyName || 'Random'} clearLabel="Random"
@@ -197,7 +204,7 @@ function RowMenu({ c }: { c: Contact }) {
   );
 }
 
-function NewRow({ company, d, act, roleOpts, addRole }: { company: Company; d: Data; act: Act; roleOpts: Array<{ value: string; label: string }>; addRole: (r: string) => Promise<void> }) {
+function NewRow({ company, d, act, roleOpts, addRole, inbox }: { company: Company; d: Data; act: Act; roleOpts: Array<{ value: string; label: string }>; addRole: (r: string) => Promise<void>; inbox: boolean }) {
   const [f, setF] = useState({ name: '', role: '', email: '', linkedin_url: '' });
   const [warn, setWarn] = useState('');
   const [ack, setAck] = useState(false);
@@ -205,7 +212,7 @@ function NewRow({ company, d, act, roleOpts, addRole }: { company: Company; d: D
   const roleCell = useRef<HTMLTableCellElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
   const linkRef = useRef<HTMLInputElement>(null);
-  const suggestion = suggestEmail(company.email_pattern, f.name, company.domain);
+  const suggestion = inbox ? '' : suggestEmail(company.email_pattern, f.name, company.domain);
 
   const commit = async () => {
     if (!f.name.trim()) return;
@@ -217,7 +224,9 @@ function NewRow({ company, d, act, roleOpts, addRole }: { company: Company; d: D
       setAck(true);
       return;
     }
-    const row = blankContact(company.id, { name: f.name.trim(), first_name: f.name.trim().split(/\s+/)[0], role: f.role, email, linkedin_url: f.linkedin_url.trim() });
+    const row = blankContact(company.id, inbox
+      ? { name: f.name.trim(), first_name: 'team', email, type: 'company' }
+      : { name: f.name.trim(), first_name: f.name.trim().split(/\s+/)[0], role: f.role, email, linkedin_url: f.linkedin_url.trim() });
     setF({ name: '', role: '', email: '', linkedin_url: '' });
     setWarn(''); setAck(false);
     nameRef.current?.focus();
@@ -232,17 +241,17 @@ function NewRow({ company, d, act, roleOpts, addRole }: { company: Company; d: D
     <>
       <tr className="newrow">
         <td />
-        <td><input ref={nameRef} className="input bare" aria-label="New person name" placeholder="Add a person" value={f.name} onChange={(e) => edit({ name: e.target.value })}
-          onKeyDown={(e) => next(e, () => { const b = roleCell.current?.querySelector('button'); b?.focus(); b?.click(); })} /></td>
-        <td ref={roleCell}><Combo bare ariaLabel="New person role" value={f.role} options={roleOpts} placeholder="Role" onAdd={async (r) => { await addRole(r); edit({ role: r }); }} addLabel="Add new role"
-          onChange={(v) => { edit({ role: v }); setTimeout(() => emailRef.current?.focus(), 0); }} /></td>
-        <td><input ref={emailRef} type="email" className={`input bare ${!f.email && suggestion ? 'ghost-suggest' : ''}`} aria-label="New person email" placeholder={suggestion || 'Email'} value={f.email}
+        <td><input ref={nameRef} className="input bare" aria-label={inbox ? 'New company email label' : 'New person name'} placeholder={inbox ? 'Add a company email, e.g. Careers' : 'Add a person'} value={f.name} onChange={(e) => edit({ name: e.target.value })}
+          onKeyDown={(e) => next(e, () => { if (inbox) { emailRef.current?.focus(); return; } const b = roleCell.current?.querySelector('button'); b?.focus(); b?.click(); })} /></td>
+        {!inbox && <td ref={roleCell}><Combo bare ariaLabel="New person role" value={f.role} options={roleOpts} placeholder="Role" onAdd={async (r) => { await addRole(r); edit({ role: r }); }} addLabel="Add new role"
+          onChange={(v) => { edit({ role: v }); setTimeout(() => emailRef.current?.focus(), 0); }} /></td>}
+        <td><input ref={emailRef} type="email" className={`input bare ${!f.email && suggestion ? 'ghost-suggest' : ''}`} aria-label={inbox ? 'New company email' : 'New person email'} placeholder={suggestion || (inbox ? 'careers@company.com' : 'Email')} value={f.email}
           onChange={(e) => edit({ email: e.target.value })}
-          onKeyDown={(e) => { if (e.key === 'Tab' && !e.shiftKey && !f.email && suggestion) setF({ ...f, email: suggestion }); next(e, () => linkRef.current?.focus()); }} /></td>
-        <td><input ref={linkRef} className="input bare" aria-label="New person LinkedIn" placeholder="LinkedIn" value={f.linkedin_url} onChange={(e) => edit({ linkedin_url: e.target.value })} onKeyDown={(e) => next(e, () => void commit())} /></td>
+          onKeyDown={(e) => { if (e.key === 'Tab' && !e.shiftKey && !f.email && suggestion) setF({ ...f, email: suggestion }); next(e, () => { if (inbox) void commit(); else linkRef.current?.focus(); }); }} /></td>
+        {!inbox && <td><input ref={linkRef} className="input bare" aria-label="New person LinkedIn" placeholder="LinkedIn" value={f.linkedin_url} onChange={(e) => edit({ linkedin_url: e.target.value })} onKeyDown={(e) => next(e, () => void commit())} /></td>}
         <td colSpan={5}><button className="btn sm ghost" onClick={() => void commit()} disabled={!f.name.trim()}>Add</button></td>
       </tr>
-      {warn && <tr><td /><td colSpan={9}><div className="warn"><AlertTriangle {...iconProps} />{warn}</div></td></tr>}
+      {warn && <tr><td /><td colSpan={inbox ? 7 : 9}><div className="warn"><AlertTriangle {...iconProps} />{warn}</div></td></tr>}
     </>
   );
 }

@@ -132,8 +132,8 @@ function setReady_(ids, ready) {
       return;
     }
 
-    if (c.status !== 'draft') return;
     if (company.status === 'replied') { errors.push({ contact_id: c.id, message: 'This company replied. Outreach is stopped.' }); return; }
+    if (c.status !== 'draft') return;
     if (!c.email) { errors.push({ contact_id: c.id, message: 'No email address.' }); return; }
     var copyId = assignCopyId_(c, company);
     if (!copyId) { errors.push({ contact_id: c.id, message: 'Pick at least one copy for this company first.' }); return; }

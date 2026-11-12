@@ -118,7 +118,7 @@ function BatchCard({ batch: b, d, total }: { batch: Batch; d: Data; total: numbe
       <div className="batch-people">
         {people.map((c) => c && (
           <div key={c.id} className="batch-person">
-            <span className="grow trunc"><b style={{ fontWeight: 500 }}>{c.name}</b> <span className="muted">· {c.role || 'No role'} · {d.copies.find((x) => x.id === c.assigned_copy_id)?.name || 'Copy not set'}</span></span>
+            <span className="grow trunc"><b style={{ fontWeight: 500 }}>{c.name}</b> <span className="muted">· {c.type === 'company' ? 'Company email' : c.role || 'No role'} · {d.copies.find((x) => x.id === c.assigned_copy_id)?.name || 'Copy not set'}</span></span>
             {planned && <button className="icon-btn" aria-label={`Remove ${c.name} from batch`} onClick={() => removePerson(c.id)}><X {...iconProps} /></button>}
           </div>
         ))}

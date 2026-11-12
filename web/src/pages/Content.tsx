@@ -3,7 +3,7 @@ import { AlertTriangle } from 'lucide-react';
 import { uid, useData, useStore } from '../store';
 import { RichText, SavedHint, useDebounced, type RichHandle, iconProps } from '../components/ui';
 import { iframeDoc, renderCopy, renderSignature, resolveLinks, SAMPLE, slug, VARIABLES } from '../lib/render';
-import { dateOf, fmtShort } from '../lib/dates';
+import { dateOf, fmtShort, nowIso } from '../lib/dates';
 import { csv, type Copy, type Link, type Signature } from '../types';
 
 type Tab = 'emails' | 'followups' | 'links' | 'signatures';
@@ -58,7 +58,8 @@ function EmailsTab({ kind, req }: { kind: 'first' | 'followup'; req: number }) {
   const body = useRef<RichHandle>(null);
   const subject = useRef<HTMLInputElement>(null);
   const last = useRef<'subject' | 'body'>('body');
-  useCreateRequest(req, () => { setDraft(blankCopy(kind)); setDirty(false); });
+  useCreateRequest(req, () => { setDraft({ ...blankCopy(kind), id: uid() }); setDirty(false); });
+  const exists = (id: string) => d.copies.some((c) => c.id === id);
 
   const globalLinks = useMemo(() => d.links.filter((l) => l.scope === 'global').sort((a, b) => Number(b.is_primary) - Number(a.is_primary)), [d.links]);
   const linkMap = useMemo(() => resolveLinks(d), [d.links]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -83,7 +84,12 @@ function EmailsTab({ kind, req }: { kind: 'first' | 'followup'; req: number }) {
 
   const save = useDebounced((c: Copy) => {
     if (!c.id || !c.name.trim()) return;
-    mutate('saveCopy', { copy: c }, (x) => ({ ...x, copies: x.copies.map((y) => (y.id === c.id ? { ...c, updated_at: y.updated_at } : y)) })).then(() => setDirty(false));
+    mutate('saveCopy', { copy: c }, (x) => ({
+      ...x,
+      copies: x.copies.some((y) => y.id === c.id)
+        ? x.copies.map((y) => (y.id === c.id ? { ...c, updated_at: y.updated_at } : y))
+        : [...x.copies, { ...c, updated_at: nowIso() }],
+    })).then(() => setDirty(false));
   }, 800);
 
   const edit = (patch: Partial<Copy>) => {
@@ -102,11 +108,6 @@ function EmailsTab({ kind, req }: { kind: 'first' | 'followup'; req: number }) {
     } else body.current?.insert(text);
   };
 
-  const create = async () => {
-    if (!draft || !draft.name.trim()) return;
-    const res = await mutate<{ id: string }>('saveCopy', { copy: { ...draft, id: undefined } });
-    if (res?.id) setDraft({ ...draft, id: res.id });
-  };
   const duplicate = async (c: Copy) => {
     const res = await mutate<{ id: string }>('saveCopy', { copy: { ...c, id: undefined, name: `${c.name} copy` } });
     if (res?.id) setDraft({ ...c, id: res.id, name: `${c.name} copy` });
@@ -129,7 +130,7 @@ function EmailsTab({ kind, req }: { kind: 'first' | 'followup'; req: number }) {
           <label className="row small muted"><input type="checkbox" className="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />Archived</label>
         </div>
         {!list.length && (
-          <div className="empty"><p>No {noun}s yet.</p><button className="link-btn" onClick={() => { setDraft(blankCopy(kind)); setDirty(false); }}>New {noun}</button></div>
+          <div className="empty"><p>No {noun}s yet.</p><button className="link-btn" onClick={() => { setDraft({ ...blankCopy(kind), id: uid() }); setDirty(false); }}>New {noun}</button></div>
         )}
         {list.map((c) => {
           const s = stats[c.id];
@@ -185,13 +186,13 @@ function EmailsTab({ kind, req }: { kind: 'first' | 'followup'; req: number }) {
               <span className="help">Host images in web/public/email/ and paste the full URL.</span></div>
 
             <div className="row">
-              {!draft.id ? <button className="btn primary" disabled={!draft.name.trim()} onClick={create}>Create {noun}</button> : (
+              {exists(draft.id) ? (
                 <>
                   <button className="btn" onClick={() => duplicate(draft)}>Duplicate</button>
                   <button className="btn" onClick={() => archive(draft)}>{draft.archived ? 'Restore' : 'Archive'}</button>
                   <SavedHint show={!dirty && !!savedAt} />
                 </>
-              )}
+              ) : <span className="help">{draft.name.trim() ? 'Saving…' : `Give this ${noun} a name and it saves automatically.`}</span>}
             </div>
 
             <div className="field"><label>Preview, with a sample contact</label>
