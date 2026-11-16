@@ -64,13 +64,15 @@ function bootstrap_() {
     copies: rows_('Copies'),
     links: rows_('Links'),
     signatures: rows_('Signatures'),
+    importlog: rows_('ImportLog').slice(-20),
     batches: rows_('Batches', function (b) { return b.status === 'planned' || b.scheduled_at >= since; }),
     sendlog: rows_('SendLog', function (r) { return r.sent_at >= since; }),
     meta: {
       sheet_url: sheetUrl_(),
       me: Session.getEffectiveUser().getEmail(),
       server_time: nowIso_(),
-      cap_hit_date: raw.cap_hit_date || ''
+      cap_hit_date: raw.cap_hit_date || '',
+      keys: { apollo: !!importKeys_().apollo, hunter: !!importKeys_().hunter }
     }
   };
 }
@@ -412,6 +414,7 @@ var ACTIONS = {
   deleteSignature: { fn: deleteSignature_, write: true },
   markCompanyReplied: { fn: function (p) { return markCompanyReplied_(p.company_id, p.contact_id, p.who); }, write: true },
   resumeCompany: { fn: function (p) { return resumeCompany_(p.company_id); }, write: true },
+  importNow: { fn: function () { return { log: runImport_('manual') }; } },
   saveSettings: { fn: saveSettings_, write: true },
   addRole: { fn: addRole_, write: true }
 };
@@ -436,5 +439,9 @@ function setup() {
     if (t.getHandlerFunction() === 'runTrigger') ScriptApp.deleteTrigger(t);
   });
   ScriptApp.newTrigger('runTrigger').timeBased().everyMinutes(10).create();
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'runDailyImport') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('runDailyImport').timeBased().atHour(8).everyDays(1).create();
   console.log('Setup complete. Trigger installed (every 10 minutes). Existing data was kept.');
 }

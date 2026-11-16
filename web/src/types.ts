@@ -22,6 +22,8 @@ export interface Company {
   created_at: string;
   replied_at: string;
   replied_by: string;
+  /** 'scout' when imported from the Scout sheet */
+  source: string;
 }
 
 export interface Contact {
@@ -46,6 +48,8 @@ export interface Contact {
   created_at: string;
   /** 'company' = a shared inbox such as careers@; blank or 'person' = a named person */
   type: 'person' | 'company' | '';
+  /** where the email came from: apollo, hunter or pattern+verified */
+  email_source: string;
 }
 
 export interface Line {
@@ -129,6 +133,23 @@ export interface Settings {
   test_email: string;
   paused: boolean;
   weekly_goal_companies: number;
+  import_per_day: number;
+  contacts_per_company: number;
+}
+
+export interface ImportLog {
+  id: string;
+  run_at: string;
+  trigger: 'daily' | 'manual';
+  imported: number;
+  imported_names: string;
+  skipped: string;
+  emails_apollo: number;
+  emails_hunter: number;
+  emails_pattern: number;
+  no_email_companies: number;
+  credits: string;
+  errors: string;
 }
 
 export interface Meta {
@@ -136,6 +157,7 @@ export interface Meta {
   me: string;
   server_time: string;
   cap_hit_date: string;
+  keys?: { apollo: boolean; hunter: boolean };
 }
 
 export interface Data {
@@ -147,6 +169,7 @@ export interface Data {
   copies: Copy[];
   links: Link[];
   signatures: Signature[];
+  importlog: ImportLog[];
   batches: Batch[];
   sendlog: SendLogRow[];
   meta: Meta;

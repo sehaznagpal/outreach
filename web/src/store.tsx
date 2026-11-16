@@ -28,7 +28,7 @@ export const applyDelta = (d: Data, delta?: Delta): Data => {
 
 const CACHE_KEY = 'outreach.cache.v1';
 /** Older backends may not send newer tables yet; never let a missing one crash a page. */
-const norm = (d: Data): Data => ({ ...d, links: d.links || [], signatures: d.signatures || [], copies: d.copies || [] });
+const norm = (d: Data): Data => ({ ...d, links: d.links || [], signatures: d.signatures || [], importlog: d.importlog || [], copies: d.copies || [] });
 const readCache = (): Data | null => {
   try { const s = localStorage.getItem(CACHE_KEY); return s ? norm(JSON.parse(s)) : null; } catch { return null; }
 };

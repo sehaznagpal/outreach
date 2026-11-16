@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
+import { fmtDay, dateOf, timeOf } from '../lib/dates';
 import { call, getApiUrl, getToken, hasEnvUrl, setApiUrl, setToken } from '../api';
 import { iconProps, SavedHint, Switch } from '../components/ui';
 import { useStore } from '../store';
-import type { Settings } from '../types';
+import type { ImportLog, Settings } from '../types';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -15,6 +16,7 @@ export function SettingsPage() {
   const pending = useRef<Partial<Settings>>({});
   const timer = useRef<ReturnType<typeof setTimeout>>();
   const [dirty, setDirty] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   const s = data?.settings;
   const [draft, setDraft] = useState<Settings | null>(s || null);
@@ -47,6 +49,20 @@ export function SettingsPage() {
       setTesting(false);
     }
   };
+
+  const importNow = async () => {
+    setImporting(true);
+    try {
+      const res = await call<{ log: ImportLog }>('importNow');
+      toast(res.log.errors && !res.log.imported ? 'error' : 'ok', res.log.errors && !res.log.imported ? res.log.errors : `Imported ${res.log.imported} ${res.log.imported === 1 ? 'company' : 'companies'}.`);
+      await reload(true);
+    } catch (e) {
+      toast('error', (e as Error).message);
+    } finally {
+      setImporting(false);
+    }
+  };
+  const runs = [...(data?.importlog || [])].sort((a, b) => (a.run_at < b.run_at ? 1 : -1)).slice(0, 5);
 
   return (
     <>
@@ -138,6 +154,39 @@ export function SettingsPage() {
               </div>
             </section>
 
+            <section className="card" style={{ gridColumn: '1 / -1' }}>
+              <h2>Import from Scout</h2>
+              <div className="field-row">
+                <div className="field"><label htmlFor="imp-day">Companies per day</label>
+                  <input id="imp-day" className="input tnum" type="number" min={0} max={50} value={draft.import_per_day ?? 4} onChange={(e) => set('import_per_day', Number(e.target.value))} /></div>
+                <div className="field"><label htmlFor="imp-ppl">People per company</label>
+                  <input id="imp-ppl" className="input tnum" type="number" min={1} max={5} value={draft.contacts_per_company ?? 3} onChange={(e) => set('contacts_per_company', Number(e.target.value))} /></div>
+              </div>
+              <div className="row" style={{ marginTop: 16 }}>
+                <button className="btn primary" onClick={importNow} disabled={importing}>{importing ? 'Importing. This can take a minute' : 'Import now'}</button>
+                <span className="help">Also runs by itself every morning around 8am. Approved Scout companies you have not applied to, oldest first.</span>
+              </div>
+              {data?.meta.keys && (!data.meta.keys.apollo || !data.meta.keys.hunter) && (
+                <p className="warn" style={{ marginTop: 12 }}>
+                  Add {!data.meta.keys.apollo ? 'APOLLO_API_KEY' : ''}{!data.meta.keys.apollo && !data.meta.keys.hunter ? ' and ' : ''}{!data.meta.keys.hunter ? 'HUNTER_API_KEY' : ''} in the Apps Script project's Script Properties.
+                </p>
+              )}
+              {runs.length > 0 && (
+                <div style={{ marginTop: 18 }}>
+                  <div className="label" style={{ marginBottom: 6 }}>Recent runs</div>
+                  {runs.map((r) => (
+                    <div key={r.id} className="attn-item" style={{ display: 'block' }}>
+                      <div className="small"><b style={{ fontWeight: 500 }}>{fmtDay(dateOf(r.run_at))} {timeOf(r.run_at)}</b> <span className="muted">· {r.trigger === 'daily' ? 'daily' : 'manual'} · imported {r.imported}{r.imported_names ? ` (${r.imported_names})` : ''}</span></div>
+                      <div className="xs muted">
+                        Emails: apollo {r.emails_apollo}, hunter {r.emails_hunter}, pattern {r.emails_pattern}
+                        {r.no_email_companies ? ` · ${r.no_email_companies} with no email` : ''}{r.skipped ? ` · skipped: ${r.skipped}` : ''} · {r.credits}
+                      </div>
+                      {r.errors && <div className="xs" style={{ color: 'var(--ember)' }}>{r.errors}</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
           </>
         ) : null}
       </div>
