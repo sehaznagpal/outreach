@@ -124,7 +124,7 @@ export const renderCopy = (
 ) => {
   const sig = signatureFor(copy, signatures);
   const all = `${copy.subject}\n${copy.body_html}\n${sig?.html || ''}`;
-  const missing = usedVars(all).filter((v, i, a) => a.indexOf(v) === i && (!(VARIABLES as readonly string[]).includes(v) || !vars[v]));
+  const missing = usedVars(all).filter((v, i, a) => a.indexOf(v) === i && v !== 'line' && (!(VARIABLES as readonly string[]).includes(v) || !vars[v]));
   usedLinkKeys(all).forEach((k) => { if (!links[k] || !links[k].url) missing.push(`link:${k}`); });
 
   const used: Record<string, Resolved> = {};
@@ -158,7 +158,7 @@ export const missingForCompany = (copy: Copy, c: Company, s: Settings, hasLines:
   };
   const sig = signatureFor(copy, signatures);
   const all = `${copy.subject}\n${copy.body_html}\n${sig?.html || ''}`;
-  const out = usedVars(all).filter((v, i, a) => a.indexOf(v) === i && v in probe && !probe[v]);
+  const out = usedVars(all).filter((v, i, a) => a.indexOf(v) === i && v !== 'line' && v in probe && !probe[v]);
   usedLinkKeys(all).forEach((k) => { if (!links[k] || !links[k].url) out.push(`link:${k}`); });
   return out;
 };

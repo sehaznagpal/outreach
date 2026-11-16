@@ -147,6 +147,7 @@ function renderEmail_(contact, company, copy, S, opts) {
 
   var missing = [];
   usedVars_(all).forEach(function (v) {
+    if (v === 'line') return; // the personal line is optional: blank when none is set
     if (missing.indexOf(v) < 0 && (VAR_NAMES.indexOf(v) < 0 || !vars[v])) missing.push(v);
   });
   usedLinkKeys_(all).forEach(function (k) {
