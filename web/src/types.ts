@@ -147,6 +147,7 @@ export interface ImportLog {
   emails_apollo: number;
   emails_hunter: number;
   emails_pattern: number;
+  emails_website: number;
   no_email_companies: number;
   credits: string;
   errors: string;
@@ -157,7 +158,7 @@ export interface Meta {
   me: string;
   server_time: string;
   cap_hit_date: string;
-  keys?: { apollo: boolean; hunter: boolean };
+  keys?: { apollo: boolean; hunter: boolean; zerobounce: boolean };
 }
 
 export interface Data {

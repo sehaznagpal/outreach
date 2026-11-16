@@ -89,7 +89,7 @@ All IDs are short random strings. All timestamps ISO strings in Asia/Kolkata.
 `id, name, industry, domain, website, opening_title, opening_url, pitch_page_url, notes, copy_ids (comma list, 1–3), followup_copy_ids, batch_size (default 4), followup_after_days (blank = global), max_followups (blank = global), status (active | paused | done | replied), created_at, replied_at, replied_by, source (blank | scout)`
 
 **Contacts**
-`id, company_id, name, first_name, role, email, linkedin_url, line_override, copy_override_id, status (draft | ready | scheduled | sent | followed_up | replied | bounced | stopped), assigned_line, assigned_copy_id, batch_id, thread_id, first_sent_at, last_sent_at, followups_sent, replied_at, created_at, type (person | company), email_source (apollo | hunter | pattern+verified)`
+`id, company_id, name, first_name, role, email, linkedin_url, line_override, copy_override_id, status (draft | ready | scheduled | sent | followed_up | replied | bounced | stopped), assigned_line, assigned_copy_id, batch_id, thread_id, first_sent_at, last_sent_at, followups_sent, replied_at, created_at, type (person | company), email_source (apollo | hunter | pattern+verified | pattern (unverified) | website)`
 
 **Lines**
 `id, company_id, text`
@@ -107,7 +107,7 @@ All IDs are short random strings. All timestamps ISO strings in Asia/Kolkata.
 `id, name, html, image_url, is_default (bool), updated_at`
 
 **ImportLog** (one row per Scout import run)
-`id, run_at, trigger (daily | manual), imported, imported_names, skipped, emails_apollo, emails_hunter, emails_pattern, no_email_companies, credits, errors`
+`id, run_at, trigger (daily | manual), imported, imported_names, skipped, emails_apollo, emails_hunter, emails_pattern, emails_website, no_email_companies, credits, errors`
 
 **SendLog** (append-only history: one row per actual email sent)
 `id, contact_id, company_id, batch_id, type (first | followup_n), copy_id, line_used, subject, sent_at, thread_id, result (ok | error), error`
@@ -244,9 +244,10 @@ Consumer Gmail via Apps Script allows about 100 recipients/day; the cap of 10–
 
 ### 5.7 Import from Scout
 Reads the Scout Google Sheet (ID in `Import.gs`). A row is imported when `status` = approved, `history` does not contain "applied" (case-insensitive), `website` is not empty, and its cleaned domain (no http, www or trailing slash) is not already in Companies. Oldest `added_on` first, up to `import_per_day` per run.
-- **People and emails (waterfall):** Apollo people search on the domain for Product Designer, Design Lead, Head of Design, Founder, Co-founder, Head of Product, HR, Talent Acquisition and Recruiter. Up to `contacts_per_company` people, design or product first, then founders, then HR. Each is revealed in Apollo for the work email and LinkedIn URL. If there is no email: Hunter Email Finder with name + domain. If still none: the Hunter Domain Search pattern builds an email, kept only if the Hunter Verifier says `valid`.
+- **People and emails:** Apollo people search on the domain for Product Designer, Design Lead, Head of Design, Founder, Co-founder, Head of Product, HR, Talent Acquisition and Recruiter. Up to `contacts_per_company` people, design or product first, then founders, then HR. Each is revealed in Apollo for the work email and LinkedIn URL. Then, for anyone still without an email: Hunter Email Finder (optional `HUNTER_API_KEY`); then the company's email pattern, inferred from emails Apollo already revealed there or taken from Hunter Domain Search, applied to the person and checked against the domain's mail records. A guess is verified with Hunter or ZeroBounce (optional `ZEROBOUNCE_API_KEY`) and kept only if valid; with no verifier it is kept and labelled `pattern (unverified)`.
+- **Company inboxes:** the importer reads the company's home, contact, careers and about pages and adds up to two public addresses on its domain (careers@, jobs@, hr@, hello@, info@ and similar) as Company emails with source `website`. Free, no key.
 - **Saving:** the company goes to Companies (`source = scout`, city, sector and why_fit in notes); each person goes to Contacts as `draft` with LinkedIn and `email_source`. A company with no emails is still added and flagged in Needs attention.
-- **Running:** a daily trigger around 8am plus **Import now** in Settings. API keys live in Script Properties (`APOLLO_API_KEY`, `HUNTER_API_KEY`). Each run writes an ImportLog row: imported, skipped (and why), emails per source, credits (Apollo estimated, Hunter from its response header).
+- **Running:** a daily trigger around 8am plus **Import now** in Settings. API keys live in Script Properties (`APOLLO_API_KEY` required; `HUNTER_API_KEY` and `ZEROBOUNCE_API_KEY` optional). Each run writes an ImportLog row: imported, skipped (and why), emails per source, credits (Apollo estimated, Hunter from its response header).
 
 ---
 

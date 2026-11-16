@@ -72,7 +72,7 @@ function bootstrap_() {
       me: Session.getEffectiveUser().getEmail(),
       server_time: nowIso_(),
       cap_hit_date: raw.cap_hit_date || '',
-      keys: { apollo: !!importKeys_().apollo, hunter: !!importKeys_().hunter }
+      keys: { apollo: !!importKeys_().apollo, hunter: !!importKeys_().hunter, zerobounce: !!importKeys_().zerobounce }
     }
   };
 }

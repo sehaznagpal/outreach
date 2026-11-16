@@ -14,7 +14,7 @@ var SCHEMA = {
   Batches: ['id', 'company_id', 'type', 'scheduled_at', 'status', 'contact_ids', 'sent_at', 'created_at', 'reason'],
   Links: ['id', 'label', 'url', 'key', 'auto_words', 'is_primary', 'scope', 'company_id', 'contact_id', 'created_at'],
   Signatures: ['id', 'name', 'html', 'image_url', 'is_default', 'updated_at'],
-  ImportLog: ['id', 'run_at', 'trigger', 'imported', 'imported_names', 'skipped', 'emails_apollo', 'emails_hunter', 'emails_pattern', 'no_email_companies', 'credits', 'errors'],
+  ImportLog: ['id', 'run_at', 'trigger', 'imported', 'imported_names', 'skipped', 'emails_apollo', 'emails_hunter', 'emails_pattern', 'emails_website', 'no_email_companies', 'credits', 'errors'],
   SendLog: ['id', 'contact_id', 'company_id', 'batch_id', 'type', 'copy_id', 'line_used', 'subject', 'sent_at', 'thread_id', 'result', 'error'],
   Roles: ['role'],
   Settings: ['key', 'value']
@@ -246,7 +246,7 @@ function fresh_(name, id) {
 
 // ---------- schema + content migration ----------
 
-var SCHEMA_VERSION = '4';
+var SCHEMA_VERSION = '5';
 
 function transformCopy_(o) {
   if (o.include_signature !== undefined) {
