@@ -156,32 +156,19 @@ export function SettingsPage() {
 
             <section className="card" style={{ gridColumn: '1 / -1' }}>
               <h2>Import from Scout</h2>
-              <div className="field-row">
-                <div className="field"><label htmlFor="imp-day">Companies per day</label>
-                  <input id="imp-day" className="input tnum" type="number" min={0} max={50} value={draft.import_per_day ?? 4} onChange={(e) => set('import_per_day', Number(e.target.value))} /></div>
-                <div className="field"><label htmlFor="imp-ppl">People per company</label>
-                  <input id="imp-ppl" className="input tnum" type="number" min={1} max={5} value={draft.contacts_per_company ?? 3} onChange={(e) => set('contacts_per_company', Number(e.target.value))} /></div>
-              </div>
+              <div className="field" style={{ maxWidth: 320 }}><label htmlFor="imp-day">Companies per day</label>
+                <input id="imp-day" className="input tnum" type="number" min={0} max={50} value={draft.import_per_day ?? 4} onChange={(e) => set('import_per_day', Number(e.target.value))} /></div>
               <div className="row" style={{ marginTop: 16 }}>
                 <button className="btn primary" onClick={importNow} disabled={importing}>{importing ? 'Importing. This can take a minute' : 'Import now'}</button>
-                <span className="help">Also runs by itself every morning around 8am. Approved Scout companies you have not applied to, oldest first.</span>
+                <span className="help">Also runs by itself every morning around 8am. Creates a company page with a few starter lines for approved Scout companies you have not applied to, oldest first. You add the people.</span>
               </div>
-              {data?.meta.keys && !data.meta.keys.apollo && (
-                <p className="warn" style={{ marginTop: 12 }}>Add APOLLO_API_KEY in the Apps Script project's Script Properties. HUNTER_API_KEY and ZEROBOUNCE_API_KEY are optional.</p>
-              )}
-              {data?.meta.keys && data.meta.keys.apollo && !data.meta.keys.hunter && !data.meta.keys.zerobounce && (
-                <p className="help" style={{ marginTop: 12 }}>Guessed emails are kept but labelled unverified. Add a HUNTER_API_KEY or ZEROBOUNCE_API_KEY to verify them.</p>
-              )}
               {runs.length > 0 && (
                 <div style={{ marginTop: 18 }}>
                   <div className="label" style={{ marginBottom: 6 }}>Recent runs</div>
                   {runs.map((r) => (
                     <div key={r.id} className="attn-item" style={{ display: 'block' }}>
                       <div className="small"><b style={{ fontWeight: 500 }}>{fmtDay(dateOf(r.run_at))} {timeOf(r.run_at)}</b> <span className="muted">· {r.trigger === 'daily' ? 'daily' : 'manual'} · imported {r.imported}{r.imported_names ? ` (${r.imported_names})` : ''}</span></div>
-                      <div className="xs muted">
-                        Emails: apollo {r.emails_apollo}, hunter {r.emails_hunter}, pattern {r.emails_pattern}, company inboxes {r.emails_website || 0}
-                        {r.no_email_companies ? ` · ${r.no_email_companies} with no email` : ''}{r.skipped ? ` · skipped: ${r.skipped}` : ''} · {r.credits}
-                      </div>
+                      <div className="xs muted">{r.lines_added || 0} lines added{r.skipped ? ` · skipped: ${r.skipped}` : ''}</div>
                       {r.errors && <div className="xs" style={{ color: 'var(--ember)' }}>{r.errors}</div>}
                     </div>
                   ))}

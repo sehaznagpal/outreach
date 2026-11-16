@@ -89,7 +89,7 @@ All IDs are short random strings. All timestamps ISO strings in Asia/Kolkata.
 `id, name, industry, domain, website, opening_title, opening_url, pitch_page_url, notes, copy_ids (comma list, 1–3), followup_copy_ids, batch_size (default 4), followup_after_days (blank = global), max_followups (blank = global), status (active | paused | done | replied), created_at, replied_at, replied_by, source (blank | scout)`
 
 **Contacts**
-`id, company_id, name, first_name, role, email, linkedin_url, line_override, copy_override_id, status (draft | ready | scheduled | sent | followed_up | replied | bounced | stopped), assigned_line, assigned_copy_id, batch_id, thread_id, first_sent_at, last_sent_at, followups_sent, replied_at, created_at, type (person | company), email_source (apollo | hunter | pattern+verified | pattern (unverified) | website)`
+`id, company_id, name, first_name, role, email, linkedin_url, line_override, copy_override_id, status (draft | ready | scheduled | sent | followed_up | replied | bounced | stopped), assigned_line, assigned_copy_id, batch_id, thread_id, first_sent_at, last_sent_at, followups_sent, replied_at, created_at, type (person | company)`
 
 **Lines**
 `id, company_id, text`
@@ -107,7 +107,7 @@ All IDs are short random strings. All timestamps ISO strings in Asia/Kolkata.
 `id, name, html, image_url, is_default (bool), updated_at`
 
 **ImportLog** (one row per Scout import run)
-`id, run_at, trigger (daily | manual), imported, imported_names, skipped, emails_apollo, emails_hunter, emails_pattern, emails_website, no_email_companies, credits, errors`
+`id, run_at, trigger (daily | manual), imported, imported_names, skipped, lines_added, errors`
 
 **SendLog** (append-only history: one row per actual email sent)
 `id, contact_id, company_id, batch_id, type (first | followup_n), copy_id, line_used, subject, sent_at, thread_id, result (ok | error), error`
@@ -116,7 +116,7 @@ All IDs are short random strings. All timestamps ISO strings in Asia/Kolkata.
 `role` (one per row; seeded, user can add)
 
 **Settings** (key / value)
-`daily_cap (15), send_days (Mon–Fri), default_send_time (10:30), followup_after_days (4), max_followups (1), sender_name, test_mode (true|false), test_email, paused (true|false), weekly_goal_companies (5), import_per_day (4), contacts_per_company (3)`
+`daily_cap (15), send_days (Mon–Fri), default_send_time (10:30), followup_after_days (4), max_followups (1), sender_name, test_mode (true|false), test_email, paused (true|false), weekly_goal_companies (5), import_per_day (4)`
 
 ### Seed roles
 Founder, Co-founder, CEO, CTO, CPO, Chief of Staff, Founder's Office, Head of Product, Product Manager, Associate Product Manager, Head of Design, Design Lead, Design Manager, Product Designer, UX Researcher, Engineering Manager, Hiring Manager, HR, HR Business Partner, Talent Acquisition, Recruiter, Other.
@@ -196,7 +196,7 @@ Page title **Content**. Subtitle: "Everything that goes into your emails: bodies
 Month view. Each day shows dots/count for first emails sent, follow-ups sent, and planned (outlined) batches. Past weekdays with nothing sent are marked faintly. Click a day → side panel listing exactly what was sent or is scheduled that day, linking to batches and companies. Read-only.
 
 ### 4.7 Settings
-Daily cap, send days, default send time, default follow-up days and max follow-ups, sender name, weekly goal, test mode + test email, pause all sending, API token field, "Run setup" helper, and a link to open the Google Sheet. An **Import from Scout** card holds companies per day, people per company, an **Import now** button, the last runs, and a hint when an API key is missing. Signature and portfolio live in Content. (On first load after the change, an old `signature_html` becomes the "Default" signature and an old `portfolio_url` fills the Portfolio link, then both keys are cleared.)
+Daily cap, send days, default send time, default follow-up days and max follow-ups, sender name, weekly goal, test mode + test email, pause all sending, API token field, "Run setup" helper, and a link to open the Google Sheet. An **Import from Scout** card holds companies per day, an **Import now** button and the last runs. Signature and portfolio live in Content. (On first load after the change, an old `signature_html` becomes the "Default" signature and an old `portfolio_url` fills the Portfolio link, then both keys are cleared.)
 
 ---
 
@@ -244,10 +244,8 @@ Consumer Gmail via Apps Script allows about 100 recipients/day; the cap of 10–
 
 ### 5.7 Import from Scout
 Reads the Scout Google Sheet (ID in `Import.gs`). A row is imported when `status` = approved, `history` does not contain "applied" (case-insensitive), `website` is not empty, and its cleaned domain (no http, www or trailing slash) is not already in Companies. Oldest `added_on` first, up to `import_per_day` per run.
-- **People and emails:** Apollo people search on the domain for Product Designer, Design Lead, Head of Design, Founder, Co-founder, Head of Product, HR, Talent Acquisition and Recruiter. Up to `contacts_per_company` people, design or product first, then founders, then HR. Each is revealed in Apollo for the work email and LinkedIn URL. Then, for anyone still without an email: Hunter Email Finder (optional `HUNTER_API_KEY`); then the company's email pattern, inferred from emails Apollo already revealed there or taken from Hunter Domain Search, applied to the person and checked against the domain's mail records. A guess is verified with Hunter or ZeroBounce (optional `ZEROBOUNCE_API_KEY`) and kept only if valid; with no verifier it is kept and labelled `pattern (unverified)`.
-- **Company inboxes:** the importer reads the company's home, contact, careers and about pages and adds up to two public addresses on its domain (careers@, jobs@, hr@, hello@, info@ and similar) as Company emails with source `website`. Free, no key.
-- **Saving:** the company goes to Companies (`source = scout`, city, sector and why_fit in notes); each person goes to Contacts as `draft` with LinkedIn and `email_source`. A company with no emails is still added and flagged in Needs attention.
-- **Running:** a daily trigger around 8am plus **Import now** in Settings. API keys live in Script Properties (`APOLLO_API_KEY` required; `HUNTER_API_KEY` and `ZEROBOUNCE_API_KEY` optional). Each run writes an ImportLog row: imported, skipped (and why), emails per source, credits (Apollo estimated, Hunter from its response header).
+- **What it creates:** a company page (`source = scout`) with name, industry (from sector), domain, website, and notes holding city, sector, why_fit and the careers link, plus up to four starter lines. Lines come from templates matched to the industry, one built from the homepage meta description, and general fallbacks. No people and no emails: those are added by hand. No paid services or API keys.
+- **Running:** a daily trigger around 8am plus **Import now** in Settings. Each run writes an ImportLog row: imported, skipped (and why), lines added, errors.
 
 ---
 

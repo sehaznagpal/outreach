@@ -26,7 +26,7 @@ export function suggestEmail(pattern: string, name: string, domain: string): str
 const blankContact = (company_id: string, f: Partial<Contact>): Contact => ({
   id: uid(), company_id, name: '', first_name: '', role: '', email: '', linkedin_url: '', line_override: '', copy_override_id: '',
   status: 'draft', assigned_line: '', assigned_copy_id: '', batch_id: '', thread_id: '', first_sent_at: '', last_sent_at: '',
-  followups_sent: 0, replied_at: '', created_at: '', type: 'person', email_source: '', ...f,
+  followups_sent: 0, replied_at: '', created_at: '', type: 'person', ...f,
 });
 
 const upsertContacts = (rows: Contact[]) => (d: Data): Data => {
@@ -168,10 +168,7 @@ function PersonRow({ c, company, d, act, lines, roleOpts, addRole, firstCopies, 
       <td><input type="checkbox" className="checkbox" aria-label={`Select ${c.name}`} checked={selected} onChange={(e) => toggle(e.target.checked)} /></td>
       <td><TextCell label={inbox ? 'Label' : 'Name'} value={c.name} onSave={(v) => v && act.update(c, inbox ? { name: v } : { name: v, first_name: v.split(/\s+/)[0] })} /></td>
       {!inbox && <td><Combo bare ariaLabel={`Role for ${c.name}`} value={c.role} options={roleOpts} placeholder="Role" onAdd={addRole} addLabel="Add new role" onChange={(v) => act.update(c, { role: v })} /></td>}
-      <td>
-        <TextCell label="Email" type="email" value={c.email} suggestion={suggestion} placeholder="Email" onSave={(v) => act.update(c, { email: v.toLowerCase(), email_source: v ? c.email_source : '' })} />
-        {c.email && c.email_source && <div className="xs faint" style={{ padding: '0 8px' }}>via {c.email_source}</div>}
-      </td>
+      <td><TextCell label="Email" type="email" value={c.email} suggestion={suggestion} placeholder="Email" onSave={(v) => act.update(c, { email: v.toLowerCase() })} /></td>
       {!inbox && <td><TextCell label="LinkedIn" value={c.linkedin_url} placeholder="LinkedIn" onSave={(v) => act.update(c, { linkedin_url: v })} /></td>}
       <td style={{ maxWidth: 200 }}><Combo bare ariaLabel={`Line for ${c.name}`} value={c.line_override} placeholder={c.assigned_line || 'Random'} clearLabel="Random"
         options={lines.map((l) => ({ value: l, label: l }))} onChange={(v) => act.update(c, { line_override: v })} /></td>

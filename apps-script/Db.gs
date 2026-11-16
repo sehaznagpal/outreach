@@ -8,13 +8,13 @@ var TZ = 'Asia/Kolkata';
 
 var SCHEMA = {
   Companies: ['id', 'name', 'industry', 'domain', 'website', 'opening_title', 'opening_url', 'pitch_page_url', 'email_pattern', 'notes', 'copy_ids', 'followup_copy_ids', 'batch_size', 'followup_after_days', 'max_followups', 'status', 'created_at', 'replied_at', 'replied_by', 'source'],
-  Contacts: ['id', 'company_id', 'name', 'first_name', 'role', 'email', 'linkedin_url', 'line_override', 'copy_override_id', 'status', 'assigned_line', 'assigned_copy_id', 'batch_id', 'thread_id', 'first_sent_at', 'last_sent_at', 'followups_sent', 'replied_at', 'created_at', 'type', 'email_source'],
+  Contacts: ['id', 'company_id', 'name', 'first_name', 'role', 'email', 'linkedin_url', 'line_override', 'copy_override_id', 'status', 'assigned_line', 'assigned_copy_id', 'batch_id', 'thread_id', 'first_sent_at', 'last_sent_at', 'followups_sent', 'replied_at', 'created_at', 'type'],
   Lines: ['id', 'company_id', 'text'],
   Copies: ['id', 'name', 'kind', 'tags', 'subject', 'body_html', 'uses_vars', 'image_url', 'signature_id', 'auto_link', 'archived', 'updated_at'],
   Batches: ['id', 'company_id', 'type', 'scheduled_at', 'status', 'contact_ids', 'sent_at', 'created_at', 'reason'],
   Links: ['id', 'label', 'url', 'key', 'auto_words', 'is_primary', 'scope', 'company_id', 'contact_id', 'created_at'],
   Signatures: ['id', 'name', 'html', 'image_url', 'is_default', 'updated_at'],
-  ImportLog: ['id', 'run_at', 'trigger', 'imported', 'imported_names', 'skipped', 'emails_apollo', 'emails_hunter', 'emails_pattern', 'emails_website', 'no_email_companies', 'credits', 'errors'],
+  ImportLog: ['id', 'run_at', 'trigger', 'imported', 'imported_names', 'skipped', 'lines_added', 'errors'],
   SendLog: ['id', 'contact_id', 'company_id', 'batch_id', 'type', 'copy_id', 'line_used', 'subject', 'sent_at', 'thread_id', 'result', 'error'],
   Roles: ['role'],
   Settings: ['key', 'value']
@@ -36,8 +36,7 @@ var DEFAULT_SETTINGS = {
   test_email: '',
   paused: 'false',
   weekly_goal_companies: '5',
-  import_per_day: '4',
-  contacts_per_company: '3'
+  import_per_day: '4'
 };
 
 var CACHE_ = {};
@@ -196,8 +195,7 @@ function settings_() {
     test_email: r.test_email || '',
     paused: String(r.paused) === 'true',
     weekly_goal_companies: Number(r.weekly_goal_companies) || 5,
-    import_per_day: r.import_per_day === '' ? 4 : Math.max(0, Math.min(50, Number(r.import_per_day))),
-    contacts_per_company: Math.max(1, Math.min(5, Number(r.contacts_per_company) || 3))
+    import_per_day: r.import_per_day === '' ? 4 : Math.max(0, Math.min(50, Number(r.import_per_day)))
   };
 }
 
@@ -246,7 +244,7 @@ function fresh_(name, id) {
 
 // ---------- schema + content migration ----------
 
-var SCHEMA_VERSION = '5';
+var SCHEMA_VERSION = '7';
 
 function transformCopy_(o) {
   if (o.include_signature !== undefined) {

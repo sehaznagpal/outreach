@@ -95,16 +95,6 @@ export function computeStats(d: Data) {
     if (bad.length) attention.push({ id: 'v' + c.id, text: `${c.name}: a chosen email uses ${bad.map((v) => `{{${v}}}`).join(', ')}, which is not filled in.`, to: `/companies/${c.id}` });
   });
 
-  // companies imported from Scout where no one has an email yet
-  d.companies.filter((c) => c.source === 'scout' && c.status !== 'replied' && c.status !== 'done').forEach((c) => {
-    const ppl = d.contacts.filter((x) => x.company_id === c.id && x.type !== 'company');
-    if (d.contacts.some((x) => x.company_id === c.id && x.email)) return;
-    attention.push({
-      id: 'sc' + c.id, to: `/companies/${c.id}`,
-      text: ppl.length ? `${c.name}: no emails found for ${ppl.length} ${ppl.length === 1 ? 'person' : 'people'}. Reach out on LinkedIn.` : `${c.name}: imported from Scout, but no people were found.`,
-    });
-  });
-
   return {
     today, weekStart, sentThisWeek, repliesThisWeek, replyRate, activeCompanies, queued7, nextBatch,
     todayBatches, todayEmails, heat, streak, companiesThisWeek, recentReplies, attention,

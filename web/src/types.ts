@@ -48,8 +48,6 @@ export interface Contact {
   created_at: string;
   /** 'company' = a shared inbox such as careers@; blank or 'person' = a named person */
   type: 'person' | 'company' | '';
-  /** where the email came from: apollo, hunter or pattern+verified */
-  email_source: string;
 }
 
 export interface Line {
@@ -134,7 +132,6 @@ export interface Settings {
   paused: boolean;
   weekly_goal_companies: number;
   import_per_day: number;
-  contacts_per_company: number;
 }
 
 export interface ImportLog {
@@ -144,12 +141,7 @@ export interface ImportLog {
   imported: number;
   imported_names: string;
   skipped: string;
-  emails_apollo: number;
-  emails_hunter: number;
-  emails_pattern: number;
-  emails_website: number;
-  no_email_companies: number;
-  credits: string;
+  lines_added: number;
   errors: string;
 }
 
@@ -158,7 +150,6 @@ export interface Meta {
   me: string;
   server_time: string;
   cap_hit_date: string;
-  keys?: { apollo: boolean; hunter: boolean; zerobounce: boolean };
 }
 
 export interface Data {

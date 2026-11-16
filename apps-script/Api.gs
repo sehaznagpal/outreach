@@ -71,8 +71,7 @@ function bootstrap_() {
       sheet_url: sheetUrl_(),
       me: Session.getEffectiveUser().getEmail(),
       server_time: nowIso_(),
-      cap_hit_date: raw.cap_hit_date || '',
-      keys: { apollo: !!importKeys_().apollo, hunter: !!importKeys_().hunter, zerobounce: !!importKeys_().zerobounce }
+      cap_hit_date: raw.cap_hit_date || ''
     }
   };
 }
