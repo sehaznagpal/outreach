@@ -10,7 +10,7 @@ var SCHEMA = {
   Companies: ['id', 'name', 'industry', 'domain', 'website', 'opening_title', 'opening_url', 'pitch_page_url', 'email_pattern', 'notes', 'copy_ids', 'followup_copy_ids', 'batch_size', 'followup_after_days', 'max_followups', 'status', 'created_at', 'replied_at', 'replied_by', 'source'],
   Contacts: ['id', 'company_id', 'name', 'first_name', 'role', 'email', 'linkedin_url', 'line_override', 'copy_override_id', 'status', 'assigned_line', 'assigned_copy_id', 'batch_id', 'thread_id', 'first_sent_at', 'last_sent_at', 'followups_sent', 'replied_at', 'created_at', 'type', 'followup_override_id'],
   Lines: ['id', 'company_id', 'text'],
-  Copies: ['id', 'name', 'kind', 'tags', 'subject', 'body_html', 'uses_vars', 'image_url', 'signature_id', 'auto_link', 'archived', 'updated_at'],
+  Copies: ['id', 'name', 'kind', 'tags', 'subject', 'body_html', 'uses_vars', 'image_url', 'signature_id', 'auto_link', 'archived', 'updated_at', 'company_id'],
   Batches: ['id', 'company_id', 'type', 'scheduled_at', 'status', 'contact_ids', 'sent_at', 'created_at', 'reason'],
   Links: ['id', 'label', 'url', 'key', 'auto_words', 'is_primary', 'scope', 'company_id', 'contact_id', 'created_at', 'track_clicks'],
   Signatures: ['id', 'name', 'html', 'image_url', 'is_default', 'updated_at'],
@@ -249,7 +249,7 @@ function fresh_(name, id) {
 
 // ---------- schema + content migration ----------
 
-var SCHEMA_VERSION = '9';
+var SCHEMA_VERSION = '10';
 
 function transformCopy_(o) {
   if (o.include_signature !== undefined) {
@@ -1669,7 +1669,8 @@ function saveCopy_(p) {
   var patch = {
     name: c.name, kind: c.kind === 'followup' ? 'followup' : 'first', tags: csvOf_(c.tags),
     subject: c.subject || '', body_html: body, image_url: c.image_url || '',
-    signature_id: c.signature_id || '', auto_link: c.auto_link !== false, updated_at: nowIso_()
+    signature_id: c.signature_id || '', auto_link: c.auto_link !== false, updated_at: nowIso_(),
+    company_id: String(c.company_id || '') // set for a copy written for one company only
   };
   patch.uses_vars = usedVars_(patch.subject).concat(usedVars_(body)).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(',');
   var row;

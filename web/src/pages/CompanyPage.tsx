@@ -3,8 +3,9 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AlertTriangle, Plus, X } from 'lucide-react';
 import { call } from '../api';
 import { uid, useData, useStore } from '../store';
-import { csv, type Company, type CompanyStatus, type Data, type Rendered } from '../types';
+import { csv, type Copy, type Company, type CompanyStatus, type Data, type Rendered } from '../types';
 import { Combo, CompanyStatusPill, Empty, iconProps, SavedHint, Seg, useDebounced } from '../components/ui';
+import { CustomCopy } from '../components/CustomCopy';
 import { LinksEditor } from '../components/LinksEditor';
 import { PeopleTable } from '../components/PeopleTable';
 import { iframeDoc, missingForCompany, resolveLinks } from '../lib/render';
@@ -165,7 +166,9 @@ function CopyPicker({ title, kind, max, company, d, field, saveCompany }: {
   const chosen = csv(company[field]);
   const hasLines = d.lines.some((l) => l.company_id === company.id);
   const links = resolveLinks(d, company.id);
-  const options = d.copies.filter((c) => c.kind === kind && !c.archived && !chosen.includes(c.id)).map((c) => ({ value: c.id, label: c.name, hint: csv(c.tags).join(' · ') }));
+  const [editing, setEditing] = useState<Copy | 'new' | null>(null);
+  const hasCustom = chosen.some((id) => d.copies.find((c) => c.id === id)?.company_id);
+  const options = d.copies.filter((c) => c.kind === kind && !c.archived && (!c.company_id || c.company_id === company.id) && !chosen.includes(c.id)).map((c) => ({ value: c.id, label: c.company_id ? 'Custom for this company' : c.name, hint: csv(c.tags).join(' · ') }));
   return (
     <div className="field" style={{ marginBottom: 18 }}>
       <label>{title} <span className="faint">({chosen.length}/{max})</span></label>
@@ -176,7 +179,8 @@ function CopyPicker({ title, kind, max, company, d, field, saveCompany }: {
           const miss = missingForCompany(cp, company, d.settings, hasLines, links, d.signatures);
           return (
             <div key={cid}>
-              <div className="chosen-item"><span className="trunc">{cp.name}</span>
+              <div className="chosen-item"><span className="trunc">{cp.company_id ? 'Custom for this company' : cp.name}</span>
+                {cp.company_id && <button className="btn sm ghost" onClick={() => setEditing(cp)}>Edit</button>}
                 <button className="icon-btn" style={{ width: 24, height: 24 }} aria-label={`Remove ${cp.name}`} onClick={() => saveCompany({ [field]: chosen.filter((x) => x !== cid).join(',') })}><X size={14} strokeWidth={1.5} /></button></div>
               {miss.length > 0 && <div className="warn" style={{ marginTop: 4 }}><AlertTriangle {...iconProps} />Uses {miss.map((m) => `{{${m}}}`).join(', ')}, which is not filled in.</div>}
             </div>
@@ -186,6 +190,8 @@ function CopyPicker({ title, kind, max, company, d, field, saveCompany }: {
       {chosen.length < max && (options.length
         ? <Combo value="" options={options} placeholder={`Add a ${kind === 'first' ? 'copy' : 'follow-up copy'}`} onChange={(v) => v && saveCompany({ [field]: [...chosen, v].join(',') })} />
         : <p className="help">No {kind === 'first' ? 'copies' : 'follow-up copies'} to add. <Link to="/copies" style={{ textDecoration: 'underline' }}>Write one in Copies.</Link></p>)}
+      {!hasCustom && <button className="btn sm" style={{ marginTop: 10 }} onClick={() => setEditing('new')}>Write a custom {kind === 'first' ? 'email' : 'follow-up'} for this company</button>}
+      {editing && <CustomCopy company={company} kind={kind} copy={editing === 'new' ? null : editing} chosen={chosen} field={field} saveCompany={saveCompany} onClose={() => setEditing(null)} />}
       {kind === 'first' && chosen.length === 0 && <div className="warn"><AlertTriangle {...iconProps} />Pick at least one copy before marking people ready.</div>}
     </div>
   );

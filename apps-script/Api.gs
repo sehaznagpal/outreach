@@ -269,7 +269,8 @@ function saveCopy_(p) {
   var patch = {
     name: c.name, kind: c.kind === 'followup' ? 'followup' : 'first', tags: csvOf_(c.tags),
     subject: c.subject || '', body_html: body, image_url: c.image_url || '',
-    signature_id: c.signature_id || '', auto_link: c.auto_link !== false, updated_at: nowIso_()
+    signature_id: c.signature_id || '', auto_link: c.auto_link !== false, updated_at: nowIso_(),
+    company_id: String(c.company_id || '') // set for a copy written for one company only
   };
   patch.uses_vars = usedVars_(patch.subject).concat(usedVars_(body)).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(',');
   var row;

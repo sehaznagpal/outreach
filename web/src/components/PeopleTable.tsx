@@ -72,8 +72,8 @@ export function PeopleTable({ company, contacts, kind = 'person' }: { company: C
   const [pasting, setPasting] = useState(false);
   const lines = d.lines.filter((l) => l.company_id === company.id);
   const roleOpts = d.roles.map((r) => ({ value: r, label: r }));
-  const firstCopies = d.copies.filter((c) => c.kind === 'first' && !c.archived);
-  const followCopies = d.copies.filter((c) => c.kind === 'followup' && !c.archived);
+  const firstCopies = d.copies.filter((c) => c.kind === 'first' && !c.archived && (!c.company_id || c.company_id === company.id));
+  const followCopies = d.copies.filter((c) => c.kind === 'followup' && !c.archived && (!c.company_id || c.company_id === company.id));
   const addRole = async (role: string) => { await mutate('addRole', { role }, (x) => ({ ...x, roles: x.roles.includes(role) ? x.roles : [...x.roles, role] })); };
   const allSel = contacts.length > 0 && sel.length === contacts.length;
   const live = sel.filter((id) => contacts.some((c) => c.id === id));

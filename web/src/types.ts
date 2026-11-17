@@ -70,6 +70,8 @@ export interface Copy {
   auto_link: boolean;
   archived: boolean;
   updated_at: string;
+  /** set when the copy was written for one company only; hidden from Content */
+  company_id: string;
 }
 
 export interface Batch {

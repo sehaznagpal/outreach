@@ -46,7 +46,7 @@ function useCreateRequest(req: number, fn: () => void) {
 
 const blankCopy = (kind: 'first' | 'followup'): Copy => ({
   id: '', name: '', kind, tags: '', subject: '', body_html: '', uses_vars: '', image_url: '',
-  signature_id: '', auto_link: true, archived: false, updated_at: '',
+  signature_id: '', auto_link: true, archived: false, updated_at: '', company_id: '',
 });
 
 function EmailsTab({ kind, req }: { kind: 'first' | 'followup'; req: number }) {
@@ -74,7 +74,7 @@ function EmailsTab({ kind, req }: { kind: 'first' | 'followup'; req: number }) {
     return m;
   }, [d.sendlog, d.contacts, d.events]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const list = d.copies.filter((c) => c.kind === kind && (showArchived || !c.archived)).sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1));
+  const list = d.copies.filter((c) => c.kind === kind && !c.company_id && (showArchived || !c.archived)).sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1));
 
   const save = useDebounced((c: Copy) => {
     if (!c.id || !c.name.trim()) return;
