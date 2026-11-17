@@ -8,7 +8,7 @@ var TZ = 'Asia/Kolkata';
 
 var SCHEMA = {
   Companies: ['id', 'name', 'industry', 'domain', 'website', 'opening_title', 'opening_url', 'pitch_page_url', 'email_pattern', 'notes', 'copy_ids', 'followup_copy_ids', 'batch_size', 'followup_after_days', 'max_followups', 'status', 'created_at', 'replied_at', 'replied_by', 'source'],
-  Contacts: ['id', 'company_id', 'name', 'first_name', 'role', 'email', 'linkedin_url', 'line_override', 'copy_override_id', 'status', 'assigned_line', 'assigned_copy_id', 'batch_id', 'thread_id', 'first_sent_at', 'last_sent_at', 'followups_sent', 'replied_at', 'created_at', 'type'],
+  Contacts: ['id', 'company_id', 'name', 'first_name', 'role', 'email', 'linkedin_url', 'line_override', 'copy_override_id', 'status', 'assigned_line', 'assigned_copy_id', 'batch_id', 'thread_id', 'first_sent_at', 'last_sent_at', 'followups_sent', 'replied_at', 'created_at', 'type', 'followup_override_id'],
   Lines: ['id', 'company_id', 'text'],
   Copies: ['id', 'name', 'kind', 'tags', 'subject', 'body_html', 'uses_vars', 'image_url', 'signature_id', 'auto_link', 'archived', 'updated_at'],
   Batches: ['id', 'company_id', 'type', 'scheduled_at', 'status', 'contact_ids', 'sent_at', 'created_at', 'reason'],
@@ -249,7 +249,7 @@ function fresh_(name, id) {
 
 // ---------- schema + content migration ----------
 
-var SCHEMA_VERSION = '8';
+var SCHEMA_VERSION = '9';
 
 function transformCopy_(o) {
   if (o.include_signature !== undefined) {
@@ -538,7 +538,7 @@ function renderEmail_(contact, company, copy, S, opts) {
 
 /** Pick the copy a contact should be rendered with (assigned, override, else the company's first). */
 function copyFor_(contact, company, kind) {
-  var id = kind === 'followup' ? null : (contact.assigned_copy_id || contact.copy_override_id);
+  var id = kind === 'followup' ? contact.followup_override_id : (contact.assigned_copy_id || contact.copy_override_id);
   if (id) { var c = byId_('Copies', id); if (c) return c; }
   var ids = csv_(kind === 'followup' ? company.followup_copy_ids : company.copy_ids);
   if (ids.length) {
@@ -1583,7 +1583,7 @@ function deleteCompany_(p) {
   return { delta: delta };
 }
 
-var CONTACT_FIELDS = ['name', 'first_name', 'role', 'email', 'linkedin_url', 'line_override', 'copy_override_id', 'type'];
+var CONTACT_FIELDS = ['name', 'first_name', 'role', 'email', 'linkedin_url', 'line_override', 'copy_override_id', 'followup_override_id', 'type'];
 
 function saveContacts_(p) {
   var delta = newDelta_();
@@ -1622,7 +1622,7 @@ function saveContacts_(p) {
       row = insert_('Contacts', {
         id: c.id, company_id: p.company_id, name: patch.name, first_name: patch.first_name || '', role: patch.role || '',
         email: patch.email || '', linkedin_url: patch.linkedin_url || '', line_override: patch.line_override || '',
-        copy_override_id: patch.copy_override_id || '', status: 'draft', assigned_line: '', assigned_copy_id: '',
+        copy_override_id: patch.copy_override_id || '', followup_override_id: patch.followup_override_id || '', status: 'draft', assigned_line: '', assigned_copy_id: '',
         batch_id: '', thread_id: '', first_sent_at: '', last_sent_at: '', followups_sent: 0, replied_at: '', created_at: nowIso_(),
         type: patch.type === 'company' ? 'company' : 'person'
       });

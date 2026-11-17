@@ -36,6 +36,7 @@ export interface Contact {
   linkedin_url: string;
   line_override: string;
   copy_override_id: string;
+  followup_override_id: string;
   status: ContactStatus;
   assigned_line: string;
   assigned_copy_id: string;

@@ -25,7 +25,7 @@ export function suggestEmail(pattern: string, name: string, domain: string): str
 }
 
 const blankContact = (company_id: string, f: Partial<Contact>): Contact => ({
-  id: uid(), company_id, name: '', first_name: '', role: '', email: '', linkedin_url: '', line_override: '', copy_override_id: '',
+  id: uid(), company_id, name: '', first_name: '', role: '', email: '', linkedin_url: '', line_override: '', copy_override_id: '', followup_override_id: '',
   status: 'draft', assigned_line: '', assigned_copy_id: '', batch_id: '', thread_id: '', first_sent_at: '', last_sent_at: '',
   followups_sent: 0, replied_at: '', created_at: '', type: 'person', ...f,
 });
@@ -73,6 +73,7 @@ export function PeopleTable({ company, contacts, kind = 'person' }: { company: C
   const lines = d.lines.filter((l) => l.company_id === company.id);
   const roleOpts = d.roles.map((r) => ({ value: r, label: r }));
   const firstCopies = d.copies.filter((c) => c.kind === 'first' && !c.archived);
+  const followCopies = d.copies.filter((c) => c.kind === 'followup' && !c.archived);
   const addRole = async (role: string) => { await mutate('addRole', { role }, (x) => ({ ...x, roles: x.roles.includes(role) ? x.roles : [...x.roles, role] })); };
   const allSel = contacts.length > 0 && sel.length === contacts.length;
   const live = sel.filter((id) => contacts.some((c) => c.id === id));
@@ -94,20 +95,20 @@ export function PeopleTable({ company, contacts, kind = 'person' }: { company: C
       <div className="tbl-wrap">
         <table className="tbl people">
           {inbox
-            ? <colgroup><col style={{ width: 32 }} /><col style={{ width: 170 }} /><col style={{ width: 230 }} /><col style={{ width: 150 }} /><col style={{ width: 130 }} /><col style={{ width: 110 }} /><col style={{ width: 170 }} /><col style={{ width: 44 }} /></colgroup>
-            : <colgroup><col style={{ width: 32 }} /><col style={{ width: 150 }} /><col style={{ width: 150 }} /><col style={{ width: 190 }} /><col style={{ width: 100 }} /><col style={{ width: 150 }} /><col style={{ width: 130 }} /><col style={{ width: 110 }} /><col style={{ width: 170 }} /><col style={{ width: 44 }} /></colgroup>}
+            ? <colgroup><col style={{ width: 32 }} /><col style={{ width: 170 }} /><col style={{ width: 230 }} /><col style={{ width: 150 }} /><col style={{ width: 130 }} /><col style={{ width: 130 }} /><col style={{ width: 110 }} /><col style={{ width: 170 }} /><col style={{ width: 44 }} /></colgroup>
+            : <colgroup><col style={{ width: 32 }} /><col style={{ width: 150 }} /><col style={{ width: 150 }} /><col style={{ width: 190 }} /><col style={{ width: 100 }} /><col style={{ width: 150 }} /><col style={{ width: 130 }} /><col style={{ width: 130 }} /><col style={{ width: 110 }} /><col style={{ width: 170 }} /><col style={{ width: 44 }} /></colgroup>}
           <thead>
             <tr>
               <th><input type="checkbox" className="checkbox" aria-label="Select all" checked={allSel} onChange={(e) => setSel(e.target.checked ? contacts.map((c) => c.id) : [])} /></th>
               {inbox
-                ? <><th>Label</th><th>Email</th><th>Line</th><th>Copy</th><th>Status</th><th>Action</th><th /></>
-                : <><th>Name</th><th>Role</th><th>Email</th><th>LinkedIn</th><th>Line</th><th>Copy</th><th>Status</th><th>Action</th><th /></>}
+                ? <><th>Label</th><th>Email</th><th>Line</th><th>Copy</th><th>Follow-up</th><th>Status</th><th>Action</th><th /></>
+                : <><th>Name</th><th>Role</th><th>Email</th><th>LinkedIn</th><th>Line</th><th>Copy</th><th>Follow-up</th><th>Status</th><th>Action</th><th /></>}
             </tr>
           </thead>
           <tbody>
             {contacts.map((c) => (
               <PersonRow key={c.id} c={c} company={company} d={d} act={act} lines={lines.map((l) => l.text)} roleOpts={roleOpts} addRole={addRole}
-                firstCopies={firstCopies} inbox={inbox} selected={sel.includes(c.id)} toggle={(on) => setSel(on ? [...sel, c.id] : sel.filter((x) => x !== c.id))} />
+                firstCopies={firstCopies} followCopies={followCopies} inbox={inbox} selected={sel.includes(c.id)} toggle={(on) => setSel(on ? [...sel, c.id] : sel.filter((x) => x !== c.id))} />
             ))}
             <NewRow company={company} d={d} act={act} roleOpts={roleOpts} addRole={addRole} inbox={inbox} />
           </tbody>
@@ -141,12 +142,19 @@ function TextCell({ value, onSave, placeholder, suggestion, label, type }: { val
   );
 }
 
-function PersonRow({ c, company, d, act, lines, roleOpts, addRole, firstCopies, selected, toggle, inbox }: {
+function PersonRow({ c, company, d, act, lines, roleOpts, addRole, firstCopies, followCopies, selected, toggle, inbox }: {
   c: Contact; company: Company; d: Data; act: Act; lines: string[]; roleOpts: Array<{ value: string; label: string }>;
-  addRole: (r: string) => Promise<void>; firstCopies: Data['copies']; selected: boolean; toggle: (on: boolean) => void; inbox: boolean;
+  addRole: (r: string) => Promise<void>; firstCopies: Data['copies']; followCopies: Data['copies']; selected: boolean; toggle: (on: boolean) => void; inbox: boolean;
 }) {
   const batch = c.batch_id ? d.batches.find((b) => b.id === c.batch_id) : undefined;
-  const copyName = d.copies.find((x) => x.id === c.assigned_copy_id)?.name;
+  const nameOf = (id: string) => d.copies.find((x) => x.id === id)?.name || '';
+  // what this person will get when the company's choices are applied
+  const pool = (ids: string) => csv(ids).map(nameOf).filter(Boolean);
+  const firstPool = pool(company.copy_ids), fuPool = pool(company.followup_copy_ids);
+  const poolHint = (names: string[], none: string) => (names.length === 1 ? names[0] : names.length ? `Random of ${names.length}` : none);
+  const copyName = nameOf(c.assigned_copy_id) || poolHint(firstPool, 'Pick on the right');
+  const fuName = poolHint(fuPool, 'Pick on the right');
+  const lineHint = c.assigned_line || (lines.length === 1 ? lines[0] : lines.length ? `Random of ${lines.length}` : 'No line');
   const suggestion = !c.email && !inbox ? suggestEmail(company.email_pattern, c.name, company.domain) : '';
   const isReady = c.status === 'ready' || c.status === 'scheduled';
 
@@ -179,10 +187,12 @@ function PersonRow({ c, company, d, act, lines, roleOpts, addRole, firstCopies, 
       {!inbox && <td><Combo bare ariaLabel={`Role for ${c.name}`} value={c.role} options={roleOpts} placeholder="Role" onAdd={addRole} addLabel="Add new role" onChange={(v) => act.update(c, { role: v })} /></td>}
       <td><TextCell label="Email" type="email" value={c.email} suggestion={suggestion} placeholder="Email" onSave={(v) => act.update(c, { email: v.toLowerCase() })} /></td>
       {!inbox && <td><TextCell label="LinkedIn" value={c.linkedin_url} placeholder="LinkedIn" onSave={(v) => act.update(c, { linkedin_url: v })} /></td>}
-      <td style={{ maxWidth: 200 }}><Combo bare ariaLabel={`Line for ${c.name}`} value={c.line_override} placeholder={c.assigned_line || 'Random'} clearLabel="Random"
+      <td style={{ maxWidth: 200 }}><Combo bare ariaLabel={`Line for ${c.name}`} value={c.line_override} placeholder={lineHint} clearLabel="Company default"
         options={lines.map((l) => ({ value: l, label: l }))} onChange={(v) => act.update(c, { line_override: v })} /></td>
-      <td style={{ maxWidth: 180 }}><Combo bare ariaLabel={`Copy for ${c.name}`} value={c.copy_override_id} placeholder={copyName || 'Random'} clearLabel="Random"
+      <td style={{ maxWidth: 180 }}><Combo bare ariaLabel={`Copy for ${c.name}`} value={c.copy_override_id} placeholder={copyName} clearLabel="Company default"
         options={firstCopies.map((x) => ({ value: x.id, label: x.name, hint: csv(x.tags).join(' · ') }))} onChange={(v) => act.update(c, { copy_override_id: v })} /></td>
+      <td style={{ maxWidth: 180 }}><Combo bare ariaLabel={`Follow-up for ${c.name}`} value={c.followup_override_id} placeholder={fuName} clearLabel="Company default"
+        options={followCopies.map((x) => ({ value: x.id, label: x.name, hint: csv(x.tags).join(' · ') }))} onChange={(v) => act.update(c, { followup_override_id: v })} /></td>
       <td><StatusPill status={c.status} /></td>
       <td>{action}</td>
       <td><RowMenu c={c} /></td>
@@ -258,9 +268,9 @@ function NewRow({ company, d, act, roleOpts, addRole, inbox }: { company: Compan
           onChange={(e) => edit({ email: e.target.value })}
           onKeyDown={(e) => { if (e.key === 'Tab' && !e.shiftKey && !f.email && suggestion) setF({ ...f, email: suggestion }); next(e, () => { if (inbox) void commit(); else linkRef.current?.focus(); }); }} /></td>
         {!inbox && <td><input ref={linkRef} className="input bare" aria-label="New person LinkedIn" placeholder="LinkedIn" value={f.linkedin_url} onChange={(e) => edit({ linkedin_url: e.target.value })} onKeyDown={(e) => next(e, () => void commit())} /></td>}
-        <td colSpan={5}><button className="btn sm ghost" onClick={() => void commit()} disabled={!f.name.trim()}>Add</button></td>
+        <td colSpan={6}><button className="btn sm ghost" onClick={() => void commit()} disabled={!f.name.trim()}>Add</button></td>
       </tr>
-      {warn && <tr><td /><td colSpan={inbox ? 7 : 9}><div className="warn"><AlertTriangle {...iconProps} />{warn}</div></td></tr>}
+      {warn && <tr><td /><td colSpan={inbox ? 8 : 10}><div className="warn"><AlertTriangle {...iconProps} />{warn}</div></td></tr>}
     </>
   );
 }

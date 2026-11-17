@@ -183,7 +183,7 @@ function deleteCompany_(p) {
   return { delta: delta };
 }
 
-var CONTACT_FIELDS = ['name', 'first_name', 'role', 'email', 'linkedin_url', 'line_override', 'copy_override_id', 'type'];
+var CONTACT_FIELDS = ['name', 'first_name', 'role', 'email', 'linkedin_url', 'line_override', 'copy_override_id', 'followup_override_id', 'type'];
 
 function saveContacts_(p) {
   var delta = newDelta_();
@@ -222,7 +222,7 @@ function saveContacts_(p) {
       row = insert_('Contacts', {
         id: c.id, company_id: p.company_id, name: patch.name, first_name: patch.first_name || '', role: patch.role || '',
         email: patch.email || '', linkedin_url: patch.linkedin_url || '', line_override: patch.line_override || '',
-        copy_override_id: patch.copy_override_id || '', status: 'draft', assigned_line: '', assigned_copy_id: '',
+        copy_override_id: patch.copy_override_id || '', followup_override_id: patch.followup_override_id || '', status: 'draft', assigned_line: '', assigned_copy_id: '',
         batch_id: '', thread_id: '', first_sent_at: '', last_sent_at: '', followups_sent: 0, replied_at: '', created_at: nowIso_(),
         type: patch.type === 'company' ? 'company' : 'person'
       });

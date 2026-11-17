@@ -191,7 +191,7 @@ function renderEmail_(contact, company, copy, S, opts) {
 
 /** Pick the copy a contact should be rendered with (assigned, override, else the company's first). */
 function copyFor_(contact, company, kind) {
-  var id = kind === 'followup' ? null : (contact.assigned_copy_id || contact.copy_override_id);
+  var id = kind === 'followup' ? contact.followup_override_id : (contact.assigned_copy_id || contact.copy_override_id);
   if (id) { var c = byId_('Copies', id); if (c) return c; }
   var ids = csv_(kind === 'followup' ? company.followup_copy_ids : company.copy_ids);
   if (ids.length) {
