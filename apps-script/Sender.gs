@@ -17,8 +17,9 @@ function runTrigger() {
   }
 }
 
-function logSend_(c, batch, type, copyId, line, subject, threadId, result, error) {
+function logSend_(c, batch, type, copyId, line, subject, threadId, result, error, id) {
   insert_('SendLog', {
+    id: id || '',
     contact_id: c.id, company_id: c.company_id, batch_id: batch.id, type: type, copy_id: copyId || '',
     line_used: line || '', subject: subject || '', sent_at: nowIso_(), thread_id: threadId || '',
     result: result, error: error || ''
@@ -56,13 +57,14 @@ function sendOne_(batch, c, company, S) {
     if (!copy) throw new Error(isFollowup ? 'No follow-up copy available' : 'No copy available');
     if (isFollowup && !c.thread_id && !S.test_mode) throw new Error('No thread to reply to');
     var banner = S.test_mode ? 'Test mode. This would have gone to ' + c.name + ' <' + c.email + '>.' : '';
-    var r = renderEmail_(c, company, copy, S, { banner: banner });
+    var sendId = uid_();
+    var r = renderEmail_(c, company, copy, S, { banner: banner, sendId: sendId });
     if (r.missing.length) throw new Error('Missing variable: ' + r.missing.join(', '));
 
     if (S.test_mode) {
       if (!S.test_email) throw new Error('Test mode is on but test_email is not set');
       GmailApp.sendEmail(S.test_email, (isFollowup ? '[Follow-up] ' : '') + r.subject, r.plain, { htmlBody: r.html, name: S.sender_name });
-      logSend_(c, batch, type, copy.id, c.assigned_line, r.subject, '', 'test', '');
+      logSend_(c, batch, type, copy.id, c.assigned_line, r.subject, '', 'test', '', sendId);
       return true;
     }
 
@@ -83,7 +85,7 @@ function sendOne_(batch, c, company, S) {
     } else {
       c = update_('Contacts', c.id, { status: 'sent', first_sent_at: now, last_sent_at: now, thread_id: threadId, assigned_copy_id: copy.id });
     }
-    logSend_(c, batch, type, copy.id, c.assigned_line, subject, threadId, 'ok', '');
+    logSend_(c, batch, type, copy.id, c.assigned_line, subject, threadId, 'ok', '', sendId);
     scheduleFollowup_(c, company, S, now);
     return true;
   } catch (err) {

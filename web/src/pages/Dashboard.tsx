@@ -101,6 +101,19 @@ export function Dashboard() {
           </div>
         </section>
 
+        <section className="card span-12" aria-label="Funnel, last 30 days">
+          <h2>Funnel, last 30 days</h2>
+          <div className="row wrap" style={{ gap: 32, marginTop: 8 }}>
+            {s.funnel.map((f, i) => (
+              <div key={f.label} title={f.label.includes('approx') ? 'Opens are approximate' : undefined}>
+                <div className="serif" style={{ fontSize: 40, lineHeight: 1 }}>{f.n}</div>
+                <div className="small muted">{f.label}</div>
+                <div className="xs faint">{i === 0 ? '' : s.funnel[i - 1].n ? `${Math.round((f.n / s.funnel[i - 1].n) * 100)}% of ${s.funnel[i - 1].label.replace(' (approx.)', '').toLowerCase()}` : '0%'}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
         <section className="card span-7" aria-label="Recent replies" style={{ minHeight: 340 }}>
           <h2>Recent replies</h2>
           {s.recentReplies.length ? s.recentReplies.map(({ company, who, at, days }) => (

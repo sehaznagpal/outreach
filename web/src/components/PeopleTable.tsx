@@ -5,6 +5,7 @@ import { csv, type Company, type Contact, type Data } from '../types';
 import { Combo, iconProps, Modal, Popover, StatusPill, Switch } from './ui';
 import { LinksEditor } from './LinksEditor';
 import { fmtDay, dateOf, timeOf } from '../lib/dates';
+import { trackBySend } from '../lib/tracking';
 
 // ---------- helpers ----------
 
@@ -159,7 +160,15 @@ function PersonRow({ c, company, d, act, lines, roleOpts, addRole, firstCopies, 
     );
   } else if (c.status === 'sent' || c.status === 'followed_up') {
     const fu = batch && batch.type === 'followup' && batch.status === 'planned' ? `Follow-up ${fmtDay(dateOf(batch.scheduled_at))}` : 'No follow-up queued';
-    action = <span className="small muted">Sent {fmtDay(dateOf(c.last_sent_at || c.first_sent_at))}<br /><span className="faint">{c.followups_sent ? `${c.followups_sent} sent · ` : ''}{fu}</span></span>;
+    const mine = d.sendlog.filter((r) => r.contact_id === c.id && r.result === 'ok');
+    const tr = trackBySend(d);
+    const opens = mine.reduce((n, r) => n + (tr[r.id]?.opens || 0), 0);
+    const keys = Array.from(new Set(mine.flatMap((r) => tr[r.id]?.clickKeys || [])));
+    const last = mine.map((r) => tr[r.id]?.lastAt || '').sort().pop() || '';
+    const tracked = d.settings.tracking && mine.length > 0;
+    const state = keys.length ? `Clicked ${keys.join(', ')}` : opens > 1 ? `Opened ${opens}×` : opens ? 'Opened' : 'No open yet';
+    action = <span className="small muted">Sent {fmtDay(dateOf(c.last_sent_at || c.first_sent_at))}<br /><span className="faint">{c.followups_sent ? `${c.followups_sent} sent · ` : ''}{fu}</span>
+      {tracked && <><br /><span title={last ? `Last activity ${fmtDay(dateOf(last))} ${timeOf(last)}. Opens are approximate.` : 'Opens are approximate'}>{state}</span></>}</span>;
   } else if (c.status === 'replied') action = <span className="small muted">Replied {c.replied_at ? fmtDay(dateOf(c.replied_at)) : ''}</span>;
   else action = <span className="small muted">{c.status === 'bounced' ? 'Bounced' : 'Stopped'}</span>;
 

@@ -1,4 +1,3 @@
-// ===== Db.gs =====
 /**
  * Db.gs — Sheet read/write helpers. The Sheet is the database.
  * Every cell is stored as text (number format "@") so ISO timestamps are never
@@ -13,15 +12,16 @@ var SCHEMA = {
   Lines: ['id', 'company_id', 'text'],
   Copies: ['id', 'name', 'kind', 'tags', 'subject', 'body_html', 'uses_vars', 'image_url', 'signature_id', 'auto_link', 'archived', 'updated_at'],
   Batches: ['id', 'company_id', 'type', 'scheduled_at', 'status', 'contact_ids', 'sent_at', 'created_at', 'reason'],
-  Links: ['id', 'label', 'url', 'key', 'auto_words', 'is_primary', 'scope', 'company_id', 'contact_id', 'created_at'],
+  Links: ['id', 'label', 'url', 'key', 'auto_words', 'is_primary', 'scope', 'company_id', 'contact_id', 'created_at', 'track_clicks'],
   Signatures: ['id', 'name', 'html', 'image_url', 'is_default', 'updated_at'],
   ImportLog: ['id', 'run_at', 'trigger', 'imported', 'imported_names', 'skipped', 'lines_added', 'errors'],
   SendLog: ['id', 'contact_id', 'company_id', 'batch_id', 'type', 'copy_id', 'line_used', 'subject', 'sent_at', 'thread_id', 'result', 'error'],
+  Events: ['id', 'send_id', 'contact_id', 'company_id', 'batch_id', 'copy_id', 'type', 'link_key', 'at', 'user_agent', 'likely_auto'],
   Roles: ['role'],
   Settings: ['key', 'value']
 };
 
-var BOOLS = { auto_link: 1, archived: 1, is_primary: 1, is_default: 1 };
+var BOOLS = { auto_link: 1, archived: 1, is_primary: 1, is_default: 1, track_clicks: 1, likely_auto: 1 };
 var NUMS = { batch_size: 1, followup_after_days: 1, max_followups: 1, followups_sent: 1 };
 
 var SEED_ROLES = ['Founder', 'Co-founder', 'CEO', 'CTO', 'CPO', 'Chief of Staff', "Founder's Office", 'Head of Product', 'Product Manager', 'Associate Product Manager', 'Head of Design', 'Design Lead', 'Design Manager', 'Product Designer', 'UX Researcher', 'Engineering Manager', 'Hiring Manager', 'HR', 'HR Business Partner', 'Talent Acquisition', 'Recruiter', 'Other'];
@@ -37,7 +37,9 @@ var DEFAULT_SETTINGS = {
   test_email: '',
   paused: 'false',
   weekly_goal_companies: '5',
-  import_per_day: '4'
+  import_per_day: '4',
+  tracking: 'true',
+  site_url: ''
 };
 
 var CACHE_ = {};
@@ -196,7 +198,9 @@ function settings_() {
     test_email: r.test_email || '',
     paused: String(r.paused) === 'true',
     weekly_goal_companies: Number(r.weekly_goal_companies) || 5,
-    import_per_day: r.import_per_day === '' ? 4 : Math.max(0, Math.min(50, Number(r.import_per_day)))
+    import_per_day: r.import_per_day === '' ? 4 : Math.max(0, Math.min(50, Number(r.import_per_day))),
+    tracking: String(r.tracking) !== 'false',
+    site_url: String(r.site_url || '').replace(/\/+$/, '')
   };
 }
 
@@ -245,7 +249,7 @@ function fresh_(name, id) {
 
 // ---------- schema + content migration ----------
 
-var SCHEMA_VERSION = '7';
+var SCHEMA_VERSION = '8';
 
 function transformCopy_(o) {
   if (o.include_signature !== undefined) {
@@ -272,6 +276,7 @@ function migrateSchema_() {
         oldHeader.forEach(function (h, i) { if (h) { o[h] = r[i]; if (r[i] !== '') any = true; } });
         if (!any) return;
         if (name === 'Copies') transformCopy_(o);
+        if (name === 'Links' && (o.track_clicks === undefined || o.track_clicks === '')) o.track_clicks = 'true';
         out.push(cols.map(function (c) { return toStr_(o[c]); }));
       });
       sh.clearContents();
@@ -340,8 +345,6 @@ function ensureMigrated_() {
   }
   CACHE_ = {};
 }
-
-// ===== Render.gs =====
 /**
  * Render.gs — template + contact + company → final email (subject, HTML, plain).
  * Order: variables → {{link:key}} / href="link:key" → auto-link words → signature.
@@ -367,7 +370,7 @@ function linkMap_(companyId, contactId) {
   var map = {};
   var put = function (l, level) {
     if (!l.key) return;
-    map[l.key] = { key: l.key, label: l.label, url: l.url, auto_words: csv_(l.auto_words), level: level };
+    map[l.key] = { key: l.key, label: l.label, url: l.url, auto_words: csv_(l.auto_words), track_clicks: l.track_clicks !== false, level: level };
   };
   where_('Links', function (l) { return l.scope === 'global'; }).forEach(function (l) { put(l, 'global'); });
   if (companyId) where_('Links', function (l) { return l.scope === 'company' && l.company_id === companyId; }).forEach(function (l) { put(l, 'company'); });
@@ -414,23 +417,25 @@ function fill_(text, vars, escape) {
   });
 }
 
-function resolveLinkTokens_(html, links, used) {
+function resolveLinkTokens_(html, links, used, href) {
+  href = href || function (k, l) { return l.url; };
   html = html.replace(/\{\{\s*link:([\w-]+)\s*\}\}/g, function (m, k) {
     var l = links[k];
     if (!l || !l.url) return '';
     used[k] = l;
-    return '<a href="' + escHtml_(l.url) + '">' + escHtml_(l.label) + '</a>';
+    return '<a href="' + escHtml_(href(k, l)) + '">' + escHtml_(l.label) + '</a>';
   });
   return html.replace(/href="link:([\w-]+)"/g, function (m, k) {
     var l = links[k];
     if (!l || !l.url) return 'href="#"';
     used[k] = l;
-    return 'href="' + escHtml_(l.url) + '"';
+    return 'href="' + escHtml_(href(k, l)) + '"';
   });
 }
 
 /** First whole-word, case-insensitive occurrence of each link's auto words becomes a link (never inside an existing link). */
-function autoLink_(html, links, used) {
+function autoLink_(html, links, used, href) {
+  href = href || function (k, l) { return l.url; };
   Object.keys(links).forEach(function (k) {
     var l = links[k];
     if (!l.url || !l.auto_words.length || used[k]) return;
@@ -445,7 +450,7 @@ function autoLink_(html, links, used) {
       else if (p.charAt(0) !== '<' && depth === 0) {
         var m = re.exec(p);
         if (m) {
-          parts[i] = p.slice(0, m.index) + '<a href="' + escHtml_(l.url) + '">' + m[0] + '</a>' + p.slice(m.index + m[0].length);
+          parts[i] = p.slice(0, m.index) + '<a href="' + escHtml_(href(k, l)) + '">' + m[0] + '</a>' + p.slice(m.index + m[0].length);
           done = true;
         }
       }
@@ -479,7 +484,7 @@ function signatureFor_(copy) {
 /**
  * Returns { subject, html, plain, missing[], links_used[] }. `missing` lists variables or links that are
  * used but empty / unknown; callers must refuse to send when non-empty.
- * opts: { banner: string, line: string }
+ * opts: { banner: string, line: string, sendId: string }  (sendId + tracking on + site_url → pixel and click links)
  */
 function renderEmail_(contact, company, copy, S, opts) {
   opts = opts || {};
@@ -491,6 +496,7 @@ function renderEmail_(contact, company, copy, S, opts) {
 
   var missing = [];
   usedVars_(all).forEach(function (v) {
+    if (v === 'line') return; // the personal line is optional: blank when none is set
     if (missing.indexOf(v) < 0 && (VAR_NAMES.indexOf(v) < 0 || !vars[v])) missing.push(v);
   });
   usedLinkKeys_(all).forEach(function (k) {
@@ -498,17 +504,21 @@ function renderEmail_(contact, company, copy, S, opts) {
   });
 
   var used = {};
+  var track = !!(opts.sendId && S.tracking && S.site_url);
+  var href = function (k, l) {
+    return track && l.track_clicks !== false ? S.site_url + '/r/' + opts.sendId + '/' + k : l.url;
+  };
   var subject = fill_(copy.subject, vars, false).replace(/\{\{\s*link:([\w-]+)\s*\}\}/g, function (m, k) {
     return links[k] ? links[k].label : '';
   });
-  var body = resolveLinkTokens_(fill_(copy.body_html, vars, true), links, used);
-  if (copy.auto_link) body = autoLink_(body, links, used);
+  var body = resolveLinkTokens_(fill_(copy.body_html, vars, true), links, used, href);
+  if (copy.auto_link) body = autoLink_(body, links, used, href);
 
   var parts = [body];
   if (copy.image_url) parts.push('<div><img src="' + escHtml_(copy.image_url) + '" style="max-width:480px;height:auto;" alt=""></div>');
   var sigRendered = '';
   if (sig) {
-    sigRendered = resolveLinkTokens_(fill_(sig.html, vars, true), links, used);
+    sigRendered = resolveLinkTokens_(fill_(sig.html, vars, true), links, used, href);
     var sigInner = sigRendered;
     if (sig.image_url) sigInner += '<div style="margin-top:8px"><img src="' + escHtml_(sig.image_url) + '" style="max-width:480px;height:auto;" alt=""></div>';
     parts.push('<div style="margin-top:16px">' + sigInner + '</div>');
@@ -517,6 +527,7 @@ function renderEmail_(contact, company, copy, S, opts) {
   if (opts.banner) inner = '<div style="margin-bottom:16px;padding:8px 12px;border:1px solid #999;font-size:12px">' + escHtml_(opts.banner) + '</div>' + inner;
 
   var html = '<div style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5">' + inner + '</div>';
+  if (track) html += '<img src="' + S.site_url + '/o/' + opts.sendId + '.gif" width="1" height="1" alt="" style="display:block;border:0">';
   var plain = (opts.banner ? opts.banner + '\n\n' : '') + htmlToPlain_(body);
   if (sigRendered) plain += '\n\n' + htmlToPlain_(sigRendered);
   var linksUsed = Object.keys(used).map(function (k) {
@@ -540,8 +551,6 @@ function copyFor_(contact, company, kind) {
   }
   return null;
 }
-
-// ===== Scheduler.gs =====
 /**
  * Scheduler.gs — batch planning, cap checks, ready → batch placement, follow-up scheduling.
  * All dates are 'yyyy-MM-dd' strings in Asia/Kolkata (no DST, fixed +05:30).
@@ -833,8 +842,6 @@ function cancelFollowups_(contact) {
   if (b && b.type === 'followup' && b.status === 'planned') dropContactFromBatch_(b.id, contact.id, newDelta_());
   update_('Contacts', contact.id, { batch_id: '' });
 }
-
-// ===== Sender.gs =====
 /**
  * Sender.gs — the 10-minute trigger: send due batches, then check the inbox.
  */
@@ -854,8 +861,9 @@ function runTrigger() {
   }
 }
 
-function logSend_(c, batch, type, copyId, line, subject, threadId, result, error) {
+function logSend_(c, batch, type, copyId, line, subject, threadId, result, error, id) {
   insert_('SendLog', {
+    id: id || '',
     contact_id: c.id, company_id: c.company_id, batch_id: batch.id, type: type, copy_id: copyId || '',
     line_used: line || '', subject: subject || '', sent_at: nowIso_(), thread_id: threadId || '',
     result: result, error: error || ''
@@ -893,13 +901,14 @@ function sendOne_(batch, c, company, S) {
     if (!copy) throw new Error(isFollowup ? 'No follow-up copy available' : 'No copy available');
     if (isFollowup && !c.thread_id && !S.test_mode) throw new Error('No thread to reply to');
     var banner = S.test_mode ? 'Test mode. This would have gone to ' + c.name + ' <' + c.email + '>.' : '';
-    var r = renderEmail_(c, company, copy, S, { banner: banner });
+    var sendId = uid_();
+    var r = renderEmail_(c, company, copy, S, { banner: banner, sendId: sendId });
     if (r.missing.length) throw new Error('Missing variable: ' + r.missing.join(', '));
 
     if (S.test_mode) {
       if (!S.test_email) throw new Error('Test mode is on but test_email is not set');
       GmailApp.sendEmail(S.test_email, (isFollowup ? '[Follow-up] ' : '') + r.subject, r.plain, { htmlBody: r.html, name: S.sender_name });
-      logSend_(c, batch, type, copy.id, c.assigned_line, r.subject, '', 'test', '');
+      logSend_(c, batch, type, copy.id, c.assigned_line, r.subject, '', 'test', '', sendId);
       return true;
     }
 
@@ -920,7 +929,7 @@ function sendOne_(batch, c, company, S) {
     } else {
       c = update_('Contacts', c.id, { status: 'sent', first_sent_at: now, last_sent_at: now, thread_id: threadId, assigned_copy_id: copy.id });
     }
-    logSend_(c, batch, type, copy.id, c.assigned_line, subject, threadId, 'ok', '');
+    logSend_(c, batch, type, copy.id, c.assigned_line, subject, threadId, 'ok', '', sendId);
     scheduleFollowup_(c, company, S, now);
     return true;
   } catch (err) {
@@ -990,8 +999,6 @@ function sendDue_(S) {
 
   if (capHit) saveSetting_('cap_hit_date', today);
 }
-
-// ===== Inbox.gs =====
 /**
  * Inbox.gs — reply + bounce detection. One reply from anyone at a company stops the whole company.
  * Reply detection always runs before sending, inside the same lock as sending and UI writes.
@@ -1134,8 +1141,6 @@ function checkBounces_() {
     });
   });
 }
-
-// ===== Import.gs =====
 /**
  * Import.gs — import approved companies from the Scout sheet and create their company pages:
  * name, industry, domain, website, notes (city, sector, why fit, careers link) and a few starter lines.
@@ -1355,8 +1360,44 @@ function runImport_(trigger) {
     }));
   });
 }
+/**
+ * Tracking.gs — open and click events posted by the Netlify functions (/o/:id.gif, /r/:id/:key).
+ * Opens are approximate: anything within 2 minutes of sending, or from a known scanner, is marked likely_auto.
+ */
 
-// ===== Api.gs =====
+var AUTO_UA_ = /bot|crawl|spider|scan|prefetch|preview|barracuda|proofpoint|mimecast|symantec|trend\s?micro|mcafee|safelinks|forcepoint|headless|python|curl|wget|go-http|node-fetch|java\/|slack|facebookexternalhit|twitter|whatsapp|skype/i;
+
+function fallbackUrl_() {
+  var l = where_('Links', function (x) { return x.scope === 'global' && x.is_primary && x.url; })[0];
+  return l ? l.url : 'https://sehaznagpal.vercel.app';
+}
+
+/** payload: { send_id, type: 'open'|'click', link_key, user_agent }. Returns { url } for clicks. */
+function recordEvent_(p) {
+  var type = p.type === 'click' ? 'click' : 'open';
+  var send = byId_('SendLog', String(p.send_id || ''));
+  var url = '';
+  if (type === 'click') {
+    url = fallbackUrl_();
+    if (send) {
+      var key = String(p.link_key || '');
+      var links = linkMap_(send.company_id, send.contact_id);
+      if (links[key] && links[key].url) url = links[key].url;
+    }
+  }
+  if (!send || send.result === 'error') return { url: url };
+  var now = new Date();
+  var ua = String(p.user_agent || '').slice(0, 300);
+  var sentMs = new Date(send.sent_at).getTime();
+  var auto = type === 'open' && (!ua || AUTO_UA_.test(ua) || (sentMs && now.getTime() - sentMs < 120000));
+  var copyBatch = send.batch_id;
+  insert_('Events', {
+    send_id: send.id, contact_id: send.contact_id, company_id: send.company_id, batch_id: copyBatch,
+    copy_id: send.copy_id, type: type, link_key: type === 'click' ? String(p.link_key || '') : '',
+    at: isoFromDate_(now), user_agent: ua, likely_auto: auto
+  });
+  return { url: url };
+}
 /**
  * Api.gs — doPost router + token check, plus setup().
  * Request:  { token, action, payload }   Response: { ok, data | error }
@@ -1426,6 +1467,7 @@ function bootstrap_() {
     importlog: rows_('ImportLog').slice(-20),
     batches: rows_('Batches', function (b) { return b.status === 'planned' || b.scheduled_at >= since; }),
     sendlog: rows_('SendLog', function (r) { return r.sent_at >= since; }),
+    events: rows_('Events', function (r) { return r.at >= since; }),
     meta: {
       sheet_url: sheetUrl_(),
       me: Session.getEffectiveUser().getEmail(),
@@ -1670,7 +1712,7 @@ function saveLink_(p) {
   var patch = {
     label: label, url: String(l.url || '').trim(), key: key,
     auto_words: csv_(Array.isArray(l.auto_words) ? l.auto_words.join(',') : l.auto_words).join(', '),
-    is_primary: scope === 'global' && !!l.is_primary, scope: scope, company_id: companyId, contact_id: contactId
+    is_primary: scope === 'global' && !!l.is_primary, track_clicks: l.track_clicks !== false, scope: scope, company_id: companyId, contact_id: contactId
   };
   var row;
   if (l.id && byId_('Links', l.id)) row = update_('Links', l.id, patch);
@@ -1773,6 +1815,7 @@ var ACTIONS = {
   markCompanyReplied: { fn: function (p) { return markCompanyReplied_(p.company_id, p.contact_id, p.who); }, write: true },
   resumeCompany: { fn: function (p) { return resumeCompany_(p.company_id); }, write: true },
   importNow: { fn: function () { return { log: runImport_('manual') }; } },
+  recordEvent: { fn: recordEvent_ }, // appends one row; no lock so it never waits behind a send run
   saveSettings: { fn: saveSettings_, write: true },
   addRole: { fn: addRole_, write: true }
 };
@@ -1803,4 +1846,3 @@ function setup() {
   ScriptApp.newTrigger('runDailyImport').timeBased().atHour(8).everyDays(1).create();
   console.log('Setup complete. Trigger installed (every 10 minutes). Existing data was kept.');
 }
-

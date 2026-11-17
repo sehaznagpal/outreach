@@ -19,7 +19,7 @@ export function LinksEditor({ scope, companyId, contactId }: { scope: 'company' 
   const add = async () => {
     if (!f.label.trim()) return;
     const l: Link = {
-      id: uid(), label: f.label.trim(), url: f.url.trim(), key: slug(f.label), auto_words: f.words.trim(), is_primary: false,
+      id: uid(), label: f.label.trim(), url: f.url.trim(), key: slug(f.label), auto_words: f.words.trim(), is_primary: false, track_clicks: true,
       scope, company_id: companyId, contact_id: contactId || '', created_at: '',
     };
     setF({ label: '', url: '', words: '' });

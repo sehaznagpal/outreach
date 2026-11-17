@@ -1,5 +1,6 @@
 import { csv, type Batch, type Contact, type Data } from '../types';
 import { addDays, dateOf, diffDays, fmtDay, isWeekday, nowIso, startOfWeek, todayStr } from './dates';
+import { trackBySend } from './tracking';
 import { missingForCompany, resolveLinks } from './render';
 
 export interface AttentionItem { id: string; text: string; to: string }
@@ -95,8 +96,23 @@ export function computeStats(d: Data) {
     if (bad.length) attention.push({ id: 'v' + c.id, text: `${c.name}: a chosen email uses ${bad.map((v) => `{{${v}}}`).join(', ')}, which is not filled in.`, to: `/companies/${c.id}` });
   });
 
+  // funnel: people emailed in the last 30 days, and how far each got (opens are approximate)
+  const since30 = addDays(today, -30);
+  const tr = trackBySend(d);
+  const funnelIds = new Set<string>(), fOpened = new Set<string>(), fClicked = new Set<string>(), fReplied = new Set<string>();
+  ok.filter((r) => dateOf(r.sent_at) >= since30).forEach((r) => {
+    funnelIds.add(r.contact_id);
+    if (tr[r.id]?.opens) fOpened.add(r.contact_id);
+    if (tr[r.id]?.clicks) fClicked.add(r.contact_id);
+    if (d.contacts.find((c) => c.id === r.contact_id)?.replied_at) fReplied.add(r.contact_id);
+  });
+  const funnel = [
+    { label: 'Sent', n: funnelIds.size }, { label: 'Opened (approx.)', n: fOpened.size },
+    { label: 'Clicked', n: fClicked.size }, { label: 'Replied', n: fReplied.size },
+  ];
+
   return {
-    today, weekStart, sentThisWeek, repliesThisWeek, replyRate, activeCompanies, queued7, nextBatch,
+    funnel, today, weekStart, sentThisWeek, repliesThisWeek, replyRate, activeCompanies, queued7, nextBatch,
     todayBatches, todayEmails, heat, streak, companiesThisWeek, recentReplies, attention,
   };
 }

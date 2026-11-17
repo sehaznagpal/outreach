@@ -4,6 +4,7 @@ import { AlertTriangle, X } from 'lucide-react';
 import { call } from '../api';
 import { useData, useStore } from '../store';
 import { addDays, dateOf, fmtDay, nowIso, startOfWeek, timeOf, todayStr, toLocalInput } from '../lib/dates';
+import { trackBySend } from '../lib/tracking';
 import { csv, type Batch, type Data } from '../types';
 import { BatchStatusPill, Empty, iconProps, Modal, Switch } from '../components/ui';
 
@@ -75,6 +76,11 @@ function BatchCard({ batch: b, d, total }: { batch: Batch; d: Data; total: numbe
   const { mutate } = useStore();
   const co = d.companies.find((c) => c.id === b.company_id);
   const planned = b.status === 'planned';
+  const sends = d.sendlog.filter((r) => r.batch_id === b.id && r.result === 'ok');
+  const tr = trackBySend(d);
+  const opened = sends.filter((r) => tr[r.id]?.opens).length;
+  const clicked = sends.filter((r) => tr[r.id]?.clicks).length;
+  const replied = sends.filter((r) => d.contacts.find((c) => c.id === r.contact_id)?.replied_at).length;
   const over = planned && total > d.settings.daily_cap;
   const people = csv(b.contact_ids).map((id) => d.contacts.find((c) => c.id === id)).filter(Boolean);
 
@@ -110,6 +116,7 @@ function BatchCard({ batch: b, d, total }: { batch: Batch; d: Data; total: numbe
           <BatchStatusPill status={b.status} />
         </div>
         {!planned && <div className="small muted">{fmtDay(dateOf(b.scheduled_at))} · {timeOf(b.scheduled_at)}</div>}
+        {!planned && sends.length > 0 && <div className="small muted" title="Opens are approximate">{opened} of {sends.length} opened (approx.) · {clicked} clicked · {replied} replied</div>}
         {!planned && b.reason && (b.status === 'cancelled' || b.status === 'partial') && <div className="small muted">{b.reason}</div>}
         {over && <div className="capwarn"><AlertTriangle {...iconProps} />{total} that day, cap {d.settings.daily_cap}</div>}
         {planned && b.scheduled_at < nowIso() && <div className="xs faint">Due. Goes out on the next run.</div>}

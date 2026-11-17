@@ -67,6 +67,7 @@ function bootstrap_() {
     importlog: rows_('ImportLog').slice(-20),
     batches: rows_('Batches', function (b) { return b.status === 'planned' || b.scheduled_at >= since; }),
     sendlog: rows_('SendLog', function (r) { return r.sent_at >= since; }),
+    events: rows_('Events', function (r) { return r.at >= since; }),
     meta: {
       sheet_url: sheetUrl_(),
       me: Session.getEffectiveUser().getEmail(),
@@ -311,7 +312,7 @@ function saveLink_(p) {
   var patch = {
     label: label, url: String(l.url || '').trim(), key: key,
     auto_words: csv_(Array.isArray(l.auto_words) ? l.auto_words.join(',') : l.auto_words).join(', '),
-    is_primary: scope === 'global' && !!l.is_primary, scope: scope, company_id: companyId, contact_id: contactId
+    is_primary: scope === 'global' && !!l.is_primary, track_clicks: l.track_clicks !== false, scope: scope, company_id: companyId, contact_id: contactId
   };
   var row;
   if (l.id && byId_('Links', l.id)) row = update_('Links', l.id, patch);
@@ -414,6 +415,7 @@ var ACTIONS = {
   markCompanyReplied: { fn: function (p) { return markCompanyReplied_(p.company_id, p.contact_id, p.who); }, write: true },
   resumeCompany: { fn: function (p) { return resumeCompany_(p.company_id); }, write: true },
   importNow: { fn: function () { return { log: runImport_('manual') }; } },
+  recordEvent: { fn: recordEvent_ }, // appends one row; no lock so it never waits behind a send run
   saveSettings: { fn: saveSettings_, write: true },
   addRole: { fn: addRole_, write: true }
 };

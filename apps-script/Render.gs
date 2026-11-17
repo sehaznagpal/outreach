@@ -23,7 +23,7 @@ function linkMap_(companyId, contactId) {
   var map = {};
   var put = function (l, level) {
     if (!l.key) return;
-    map[l.key] = { key: l.key, label: l.label, url: l.url, auto_words: csv_(l.auto_words), level: level };
+    map[l.key] = { key: l.key, label: l.label, url: l.url, auto_words: csv_(l.auto_words), track_clicks: l.track_clicks !== false, level: level };
   };
   where_('Links', function (l) { return l.scope === 'global'; }).forEach(function (l) { put(l, 'global'); });
   if (companyId) where_('Links', function (l) { return l.scope === 'company' && l.company_id === companyId; }).forEach(function (l) { put(l, 'company'); });
@@ -70,23 +70,25 @@ function fill_(text, vars, escape) {
   });
 }
 
-function resolveLinkTokens_(html, links, used) {
+function resolveLinkTokens_(html, links, used, href) {
+  href = href || function (k, l) { return l.url; };
   html = html.replace(/\{\{\s*link:([\w-]+)\s*\}\}/g, function (m, k) {
     var l = links[k];
     if (!l || !l.url) return '';
     used[k] = l;
-    return '<a href="' + escHtml_(l.url) + '">' + escHtml_(l.label) + '</a>';
+    return '<a href="' + escHtml_(href(k, l)) + '">' + escHtml_(l.label) + '</a>';
   });
   return html.replace(/href="link:([\w-]+)"/g, function (m, k) {
     var l = links[k];
     if (!l || !l.url) return 'href="#"';
     used[k] = l;
-    return 'href="' + escHtml_(l.url) + '"';
+    return 'href="' + escHtml_(href(k, l)) + '"';
   });
 }
 
 /** First whole-word, case-insensitive occurrence of each link's auto words becomes a link (never inside an existing link). */
-function autoLink_(html, links, used) {
+function autoLink_(html, links, used, href) {
+  href = href || function (k, l) { return l.url; };
   Object.keys(links).forEach(function (k) {
     var l = links[k];
     if (!l.url || !l.auto_words.length || used[k]) return;
@@ -101,7 +103,7 @@ function autoLink_(html, links, used) {
       else if (p.charAt(0) !== '<' && depth === 0) {
         var m = re.exec(p);
         if (m) {
-          parts[i] = p.slice(0, m.index) + '<a href="' + escHtml_(l.url) + '">' + m[0] + '</a>' + p.slice(m.index + m[0].length);
+          parts[i] = p.slice(0, m.index) + '<a href="' + escHtml_(href(k, l)) + '">' + m[0] + '</a>' + p.slice(m.index + m[0].length);
           done = true;
         }
       }
@@ -135,7 +137,7 @@ function signatureFor_(copy) {
 /**
  * Returns { subject, html, plain, missing[], links_used[] }. `missing` lists variables or links that are
  * used but empty / unknown; callers must refuse to send when non-empty.
- * opts: { banner: string, line: string }
+ * opts: { banner: string, line: string, sendId: string }  (sendId + tracking on + site_url → pixel and click links)
  */
 function renderEmail_(contact, company, copy, S, opts) {
   opts = opts || {};
@@ -155,17 +157,21 @@ function renderEmail_(contact, company, copy, S, opts) {
   });
 
   var used = {};
+  var track = !!(opts.sendId && S.tracking && S.site_url);
+  var href = function (k, l) {
+    return track && l.track_clicks !== false ? S.site_url + '/r/' + opts.sendId + '/' + k : l.url;
+  };
   var subject = fill_(copy.subject, vars, false).replace(/\{\{\s*link:([\w-]+)\s*\}\}/g, function (m, k) {
     return links[k] ? links[k].label : '';
   });
-  var body = resolveLinkTokens_(fill_(copy.body_html, vars, true), links, used);
-  if (copy.auto_link) body = autoLink_(body, links, used);
+  var body = resolveLinkTokens_(fill_(copy.body_html, vars, true), links, used, href);
+  if (copy.auto_link) body = autoLink_(body, links, used, href);
 
   var parts = [body];
   if (copy.image_url) parts.push('<div><img src="' + escHtml_(copy.image_url) + '" style="max-width:480px;height:auto;" alt=""></div>');
   var sigRendered = '';
   if (sig) {
-    sigRendered = resolveLinkTokens_(fill_(sig.html, vars, true), links, used);
+    sigRendered = resolveLinkTokens_(fill_(sig.html, vars, true), links, used, href);
     var sigInner = sigRendered;
     if (sig.image_url) sigInner += '<div style="margin-top:8px"><img src="' + escHtml_(sig.image_url) + '" style="max-width:480px;height:auto;" alt=""></div>';
     parts.push('<div style="margin-top:16px">' + sigInner + '</div>');
@@ -174,6 +180,7 @@ function renderEmail_(contact, company, copy, S, opts) {
   if (opts.banner) inner = '<div style="margin-bottom:16px;padding:8px 12px;border:1px solid #999;font-size:12px">' + escHtml_(opts.banner) + '</div>' + inner;
 
   var html = '<div style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5">' + inner + '</div>';
+  if (track) html += '<img src="' + S.site_url + '/o/' + opts.sendId + '.gif" width="1" height="1" alt="" style="display:block;border:0">';
   var plain = (opts.banner ? opts.banner + '\n\n' : '') + htmlToPlain_(body);
   if (sigRendered) plain += '\n\n' + htmlToPlain_(sigRendered);
   var linksUsed = Object.keys(used).map(function (k) {

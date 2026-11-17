@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { fmtDay, dateOf, timeOf } from '../lib/dates';
 import { call, getApiUrl, getToken, hasEnvUrl, setApiUrl, setToken } from '../api';
@@ -34,6 +34,14 @@ export function SettingsPage() {
       setDirty(false);
     }, 700);
   };
+
+  // the tracking pixel and links need this site's address; fill it in once from where the app is open
+  const filled = useRef(false);
+  useEffect(() => {
+    if (!draft || filled.current) return;
+    filled.current = true;
+    if (!draft.site_url && /^https:\/\//.test(window.location.origin)) set('site_url', window.location.origin);
+  }, [draft]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const connect = async () => {
     setToken(token);
@@ -114,6 +122,10 @@ export function SettingsPage() {
                 <Switch label="Test mode" checked={draft.test_mode} onChange={(v) => set('test_mode', v)} /></div>
               <div className="field" style={{ marginTop: 6 }}><label htmlFor="test-email">Test email</label>
                 <input id="test-email" className="input" type="email" value={draft.test_email} onChange={(e) => set('test_email', e.target.value)} placeholder="you@example.com" /></div>
+              <div className="setting-row" style={{ marginTop: 14 }}><div><div>Tracking</div><div className="help">Adds an open pixel and routes links through this site. Opens are approximate.</div></div>
+                <Switch label="Tracking" checked={draft.tracking} onChange={(v) => set('tracking', v)} /></div>
+              {draft.tracking && <div className="field" style={{ marginTop: 6 }}><label htmlFor="site-url">Site address</label>
+                <input id="site-url" className="input" value={draft.site_url || ''} onChange={(e) => set('site_url', e.target.value.trim())} placeholder="https://your-site.netlify.app" /></div>}
             </section>
 
             <section className="card">

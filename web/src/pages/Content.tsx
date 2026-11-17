@@ -4,6 +4,7 @@ import { uid, useData, useStore } from '../store';
 import { RichText, SavedHint, useDebounced, type RichHandle, iconProps } from '../components/ui';
 import { iframeDoc, renderCopy, renderSignature, resolveLinks, SAMPLE, slug, VARIABLES } from '../lib/render';
 import { dateOf, fmtShort, nowIso } from '../lib/dates';
+import { MIN_SENDS, pct, ratesFor, trackBySend, type Rates } from '../lib/tracking';
 import { csv, type Copy, type Link, type Signature } from '../types';
 
 type Tab = 'emails' | 'followups' | 'links' | 'signatures';
@@ -65,20 +66,13 @@ function EmailsTab({ kind, req }: { kind: 'first' | 'followup'; req: number }) {
   const linkMap = useMemo(() => resolveLinks(d), [d.links]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const stats = useMemo(() => {
-    const m: Record<string, { uses: number; replied: number; people: number }> = {};
-    const seen: Record<string, Set<string>> = {};
-    d.sendlog.filter((r) => r.result === 'ok' && r.copy_id).forEach((r) => {
-      const s = m[r.copy_id] || (m[r.copy_id] = { uses: 0, replied: 0, people: 0 });
-      s.uses++;
-      const set = seen[r.copy_id] || (seen[r.copy_id] = new Set());
-      if (!set.has(r.contact_id)) {
-        set.add(r.contact_id);
-        s.people++;
-        if (d.contacts.find((c) => c.id === r.contact_id)?.replied_at) s.replied++;
-      }
-    });
+    const tr = trackBySend(d);
+    const by: Record<string, typeof d.sendlog> = {};
+    d.sendlog.filter((r) => r.result === 'ok' && r.copy_id).forEach((r) => { (by[r.copy_id] || (by[r.copy_id] = [])).push(r); });
+    const m: Record<string, Rates> = {};
+    Object.keys(by).forEach((id) => { m[id] = ratesFor(d, by[id], tr); });
     return m;
-  }, [d.sendlog, d.contacts]);
+  }, [d.sendlog, d.contacts, d.events]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const list = d.copies.filter((c) => c.kind === kind && (showArchived || !c.archived)).sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1));
 
@@ -139,7 +133,10 @@ function EmailsTab({ kind, req }: { kind: 'first' | 'followup'; req: number }) {
               <div className="row"><span className="nm grow trunc" style={{ opacity: c.archived ? 0.5 : 1 }}>{c.name}</span>{c.archived && <span className="pill">Archived</span>}</div>
               <div className="tagrow">{csv(c.tags).map((t) => <span key={t} className="pill">{t}</span>)}</div>
               <div className="xs faint">
-                Edited {c.updated_at ? fmtShort(dateOf(c.updated_at)) : 'never'} · used {s?.uses || 0}×{s && s.people ? ` · ${Math.round((s.replied / s.people) * 100)}% replied` : ''}
+                Edited {c.updated_at ? fmtShort(dateOf(c.updated_at)) : 'never'} · sent {s?.sent || 0}
+              </div>
+              <div className="xs faint" title="Opens are approximate">
+                {s && s.sent >= MIN_SENDS ? `${pct(s.opened, s.sent)} opened (approx.) · ${pct(s.clicked, s.sent)} clicked · ${pct(s.replied, s.sent)} replied` : 'Too few sends'}
               </div>
             </button>
           );
@@ -212,7 +209,7 @@ function EmailsTab({ kind, req }: { kind: 'first' | 'followup'; req: number }) {
 
 // ---------- Links ----------
 
-const blankLink = (): Link => ({ id: '', label: '', url: '', key: '', auto_words: '', is_primary: false, scope: 'global', company_id: '', contact_id: '', created_at: '' });
+const blankLink = (): Link => ({ id: '', label: '', url: '', key: '', auto_words: '', is_primary: false, track_clicks: true, scope: 'global', company_id: '', contact_id: '', created_at: '' });
 
 function LinksTab({ req }: { req: number }) {
   const d = useData();
@@ -273,6 +270,7 @@ function LinksTab({ req }: { req: number }) {
             <div className="field"><label htmlFor="ln-words">Auto-link words</label><input id="ln-words" className="input" value={draft.auto_words} onChange={(e) => edit({ auto_words: e.target.value })} placeholder="portfolio, my work" />
               <span className="help">Comma separated. The first whole-word match in an email becomes this link.</span></div>
             <label className="row small"><input type="checkbox" className="checkbox" checked={draft.is_primary} onChange={(e) => edit({ is_primary: e.target.checked })} />Primary link, pinned at the top</label>
+            <label className="row small"><input type="checkbox" className="checkbox" checked={draft.track_clicks} onChange={(e) => edit({ track_clicks: e.target.checked })} />Track clicks on this link</label>
             <div className="row">
               {exists(draft.id) && <button className="btn danger" onClick={() => remove(draft)}>Delete</button>}
               <SavedHint show={!dirty && !!savedAt && exists(draft.id)} />

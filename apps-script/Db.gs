@@ -12,15 +12,16 @@ var SCHEMA = {
   Lines: ['id', 'company_id', 'text'],
   Copies: ['id', 'name', 'kind', 'tags', 'subject', 'body_html', 'uses_vars', 'image_url', 'signature_id', 'auto_link', 'archived', 'updated_at'],
   Batches: ['id', 'company_id', 'type', 'scheduled_at', 'status', 'contact_ids', 'sent_at', 'created_at', 'reason'],
-  Links: ['id', 'label', 'url', 'key', 'auto_words', 'is_primary', 'scope', 'company_id', 'contact_id', 'created_at'],
+  Links: ['id', 'label', 'url', 'key', 'auto_words', 'is_primary', 'scope', 'company_id', 'contact_id', 'created_at', 'track_clicks'],
   Signatures: ['id', 'name', 'html', 'image_url', 'is_default', 'updated_at'],
   ImportLog: ['id', 'run_at', 'trigger', 'imported', 'imported_names', 'skipped', 'lines_added', 'errors'],
   SendLog: ['id', 'contact_id', 'company_id', 'batch_id', 'type', 'copy_id', 'line_used', 'subject', 'sent_at', 'thread_id', 'result', 'error'],
+  Events: ['id', 'send_id', 'contact_id', 'company_id', 'batch_id', 'copy_id', 'type', 'link_key', 'at', 'user_agent', 'likely_auto'],
   Roles: ['role'],
   Settings: ['key', 'value']
 };
 
-var BOOLS = { auto_link: 1, archived: 1, is_primary: 1, is_default: 1 };
+var BOOLS = { auto_link: 1, archived: 1, is_primary: 1, is_default: 1, track_clicks: 1, likely_auto: 1 };
 var NUMS = { batch_size: 1, followup_after_days: 1, max_followups: 1, followups_sent: 1 };
 
 var SEED_ROLES = ['Founder', 'Co-founder', 'CEO', 'CTO', 'CPO', 'Chief of Staff', "Founder's Office", 'Head of Product', 'Product Manager', 'Associate Product Manager', 'Head of Design', 'Design Lead', 'Design Manager', 'Product Designer', 'UX Researcher', 'Engineering Manager', 'Hiring Manager', 'HR', 'HR Business Partner', 'Talent Acquisition', 'Recruiter', 'Other'];
@@ -36,7 +37,9 @@ var DEFAULT_SETTINGS = {
   test_email: '',
   paused: 'false',
   weekly_goal_companies: '5',
-  import_per_day: '4'
+  import_per_day: '4',
+  tracking: 'true',
+  site_url: ''
 };
 
 var CACHE_ = {};
@@ -195,7 +198,9 @@ function settings_() {
     test_email: r.test_email || '',
     paused: String(r.paused) === 'true',
     weekly_goal_companies: Number(r.weekly_goal_companies) || 5,
-    import_per_day: r.import_per_day === '' ? 4 : Math.max(0, Math.min(50, Number(r.import_per_day)))
+    import_per_day: r.import_per_day === '' ? 4 : Math.max(0, Math.min(50, Number(r.import_per_day))),
+    tracking: String(r.tracking) !== 'false',
+    site_url: String(r.site_url || '').replace(/\/+$/, '')
   };
 }
 
@@ -244,7 +249,7 @@ function fresh_(name, id) {
 
 // ---------- schema + content migration ----------
 
-var SCHEMA_VERSION = '7';
+var SCHEMA_VERSION = '8';
 
 function transformCopy_(o) {
   if (o.include_signature !== undefined) {
@@ -271,6 +276,7 @@ function migrateSchema_() {
         oldHeader.forEach(function (h, i) { if (h) { o[h] = r[i]; if (r[i] !== '') any = true; } });
         if (!any) return;
         if (name === 'Copies') transformCopy_(o);
+        if (name === 'Links' && (o.track_clicks === undefined || o.track_clicks === '')) o.track_clicks = 'true';
         out.push(cols.map(function (c) { return toStr_(o[c]); }));
       });
       sh.clearContents();

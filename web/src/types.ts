@@ -94,6 +94,7 @@ export interface Link {
   company_id: string;
   contact_id: string;
   created_at: string;
+  track_clicks: boolean;
 }
 
 export interface Signature {
@@ -132,6 +133,8 @@ export interface Settings {
   paused: boolean;
   weekly_goal_companies: number;
   import_per_day: number;
+  tracking: boolean;
+  site_url: string;
 }
 
 export interface ImportLog {
@@ -143,6 +146,20 @@ export interface ImportLog {
   skipped: string;
   lines_added: number;
   errors: string;
+}
+
+export interface TrackEvent {
+  id: string;
+  send_id: string;
+  contact_id: string;
+  company_id: string;
+  batch_id: string;
+  copy_id: string;
+  type: 'open' | 'click';
+  link_key: string;
+  at: string;
+  user_agent: string;
+  likely_auto: boolean;
 }
 
 export interface Meta {
@@ -164,6 +181,7 @@ export interface Data {
   importlog: ImportLog[];
   batches: Batch[];
   sendlog: SendLogRow[];
+  events: TrackEvent[];
   meta: Meta;
 }
 
