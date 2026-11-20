@@ -15,7 +15,7 @@ var SCHEMA = {
   Links: ['id', 'label', 'url', 'key', 'auto_words', 'is_primary', 'scope', 'company_id', 'contact_id', 'created_at', 'track_clicks'],
   Signatures: ['id', 'name', 'html', 'image_url', 'is_default', 'updated_at'],
   ImportLog: ['id', 'run_at', 'trigger', 'imported', 'imported_names', 'skipped', 'lines_added', 'errors'],
-  SendLog: ['id', 'contact_id', 'company_id', 'batch_id', 'type', 'copy_id', 'line_used', 'subject', 'sent_at', 'thread_id', 'result', 'error'],
+  SendLog: ['id', 'contact_id', 'company_id', 'batch_id', 'type', 'copy_id', 'line_used', 'subject', 'sent_at', 'thread_id', 'result', 'error', 'to'],
   Events: ['id', 'send_id', 'contact_id', 'company_id', 'batch_id', 'copy_id', 'type', 'link_key', 'at', 'user_agent', 'likely_auto'],
   Roles: ['role'],
   Settings: ['key', 'value']
@@ -183,6 +183,11 @@ function rawSettings_() {
   return out;
 }
 
+/** Strict boolean: Sheet cells are text, so "false" must never count as true. */
+function bool_(v) {
+  return v === true || String(v).trim().toLowerCase() === 'true';
+}
+
 /** Parsed settings. */
 function settings_() {
   var r = rawSettings_();
@@ -194,9 +199,9 @@ function settings_() {
     followup_after_days: Number(r.followup_after_days) || 4,
     max_followups: r.max_followups === '' ? 1 : Number(r.max_followups),
     sender_name: r.sender_name || '',
-    test_mode: String(r.test_mode) === 'true',
+    test_mode: bool_(r.test_mode),
     test_email: r.test_email || '',
-    paused: String(r.paused) === 'true',
+    paused: bool_(r.paused),
     weekly_goal_companies: Number(r.weekly_goal_companies) || 5,
     import_per_day: r.import_per_day === '' ? 4 : Math.max(0, Math.min(50, Number(r.import_per_day))),
     tracking: String(r.tracking) !== 'false',
@@ -249,7 +254,7 @@ function fresh_(name, id) {
 
 // ---------- schema + content migration ----------
 
-var SCHEMA_VERSION = '10';
+var SCHEMA_VERSION = '11';
 
 function transformCopy_(o) {
   if (o.include_signature !== undefined) {

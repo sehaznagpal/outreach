@@ -70,6 +70,8 @@ export function computeStats(d: Data) {
   const attention: AttentionItem[] = [];
   if (d.settings.paused) attention.push({ id: 'paused', text: 'Sending is paused. Nothing will go out until you switch it back on.', to: '/logs' });
   if (d.meta.cap_hit_date === today) attention.push({ id: 'cap', text: 'Daily cap reached today. Remaining batches wait for tomorrow.', to: '/logs' });
+  d.sendlog.filter((r) => r.result === 'error' && r.error.startsWith('Blocked: recipient is your own address') && dateOf(r.sent_at) >= addDays(today, -3)).forEach((r) =>
+    attention.push({ id: 'own' + r.id, text: `A send to ${co(r.company_id)?.name || 'a company'} was blocked because the recipient was your own address. Nothing went out.`, to: '/logs' }));
   d.contacts.filter((c) => c.status === 'bounced').forEach((c) =>
     attention.push({ id: 'b' + c.id, text: `${c.name} at ${co(c.company_id)?.name || 'a company'} bounced (${c.email}).`, to: `/companies/${c.company_id}` }));
   d.companies.forEach((c) => {

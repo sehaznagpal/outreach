@@ -122,6 +122,7 @@ export interface SendLogRow {
   thread_id: string;
   result: 'ok' | 'error' | 'test';
   error: string;
+  to: string;
 }
 
 export interface Settings {
